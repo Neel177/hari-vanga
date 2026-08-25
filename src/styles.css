@@ -1663,3 +1663,482 @@ button:disabled {
         padding: 22px
     }
 }
+
+/* ================================================================== */
+/* FINAL MOBILE APP EXPERIENCE + MULTI-GUEST MEAL STEPPER             */
+/* ================================================================== */
+.guest-main {
+    gap: 5px;
+    font-weight: 800;
+}
+
+.guest-main span {
+    font-size: 12px;
+}
+
+.guest-main b {
+    font-size: 13px;
+}
+
+.guest-main-icons {
+    letter-spacing: -4px;
+    max-width: 38px;
+    overflow: hidden;
+}
+
+.picker-title {
+    grid-column: 1/-1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 900;
+    color: var(--ink);
+    padding: 2px 2px 8px;
+}
+
+.picker-close {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 50%;
+    background: #f3f5f4;
+    color: #5d7370;
+    display: grid;
+    place-items: center;
+}
+
+.guest-stepper {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 7px;
+    width: 230px;
+    padding: 10px;
+}
+
+.food-step {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border: 1px solid #f1e4e7;
+    background: #fffafb;
+    border-radius: 12px;
+    padding: 7px 8px;
+}
+
+.food-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    text-transform: capitalize;
+    color: #7f5360;
+    font-size: 12px;
+}
+
+.quantity-stepper {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.quantity-stepper button {
+    width: 27px;
+    height: 27px;
+    padding: 0;
+    border-radius: 9px;
+    border: 1px solid #eadcdf;
+    background: #fff;
+    color: #b65770;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.quantity-stepper strong {
+    width: 18px;
+    text-align: center;
+    font-size: 13px;
+}
+
+.done-choice {
+    border: 0;
+    border-radius: 11px;
+    padding: 9px;
+    background: var(--teal);
+    color: #fff;
+    font-weight: 800;
+}
+
+@media (max-width: 900px) {
+
+    html,
+    body,
+    #root {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    .clean-desktop {
+        display: none !important;
+    }
+
+    .clean-mobile {
+        display: block !important;
+        padding: 0 12px 42px;
+    }
+
+    .tracker {
+        padding-bottom: 24px;
+    }
+
+    .tracker>header {
+        min-height: 74px;
+        padding: 10px 14px;
+        gap: 8px;
+    }
+
+    .tracker>header>div>span {
+        font-size: 25px;
+    }
+
+    .tracker>header b {
+        font-size: 18px;
+    }
+
+    .tracker>header small {
+        font-size: 10px;
+    }
+
+    .tracker>header nav {
+        gap: 7px;
+    }
+
+    .tracker>header nav button,
+    .language {
+        min-height: 42px;
+        padding: 9px 11px;
+        border-radius: 13px;
+        font-size: 12px;
+    }
+
+    .tabs {
+        padding: 8px 10px;
+        gap: 6px;
+        position: sticky;
+        top: 0;
+    }
+
+    .tabs button {
+        padding: 10px 12px;
+        min-height: 42px;
+        font-size: 13px;
+        gap: 6px;
+    }
+
+    .tabs button svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .legend {
+        margin: 10px 12px 4px;
+        padding: 0;
+        font-size: 11px;
+        gap: 7px;
+        flex-wrap: wrap;
+    }
+
+    .tracker-hero {
+        margin: 10px 12px 16px;
+        min-height: 220px;
+        padding: 22px 20px;
+        border-radius: 24px;
+        overflow: hidden;
+    }
+
+    .tracker-hero h1 {
+        font-size: 30px;
+        line-height: 1.05;
+        max-width: 72%;
+        margin: 8px 0;
+    }
+
+    .tracker-hero p {
+        max-width: 72%;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .tracker-hero-art {
+        right: -46px;
+        bottom: -36px;
+        transform: scale(.8);
+        transform-origin: bottom right;
+        opacity: .58;
+    }
+
+    .tracker-stats {
+        max-width: 75%;
+        gap: 7px;
+        margin-top: 16px;
+    }
+
+    .tracker-stats div {
+        min-width: 0;
+        padding: 9px 8px;
+        border-radius: 14px;
+    }
+
+    .tracker-stats strong {
+        font-size: 20px;
+    }
+
+    .tracker-stats span {
+        font-size: 9px;
+    }
+
+    .mobile-date-nav {
+        margin: 0 0 18px;
+        padding: 14px 14px 12px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, .94);
+        box-shadow: 0 12px 28px rgba(13, 92, 88, .08);
+    }
+
+    .mobile-day-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .mobile-day-top small {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .mobile-day-top b {
+        display: block;
+        font-size: 20px;
+        margin-top: 2px;
+        color: var(--ink);
+    }
+
+    .selected-day-chip {
+        flex: 0 0 auto;
+        padding: 8px 10px;
+        border-radius: 999px;
+        background: #e2f2ed;
+        color: var(--teal);
+        font-size: 11px;
+        font-weight: 900;
+    }
+
+    .date-strip {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding: 14px 0 3px;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .date-strip button {
+        flex: 0 0 48px;
+        height: 48px;
+        border-radius: 15px;
+        font-size: 14px;
+        scroll-snap-align: start;
+    }
+
+    .mobile-tracker-section {
+        margin: 0 0 20px;
+    }
+
+    .mobile-section-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 4px 10px;
+    }
+
+    .mobile-section-title h2 {
+        margin: 0;
+        font-size: 22px;
+    }
+
+    .mobile-section-title span {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: #e3f1ed;
+        color: var(--teal);
+        font-size: 12px;
+        font-weight: 900;
+    }
+
+    .mobile-tracker-section.guest .mobile-section-title h2 {
+        color: #a44d65;
+    }
+
+    .mobile-tracker-section.guest .mobile-section-title span {
+        background: #ffe6eb;
+        color: #b65770;
+    }
+
+    .mobile-tracker-section article {
+        padding: 15px;
+        margin-bottom: 11px;
+        border-radius: 21px;
+        background: rgba(255, 255, 255, .96);
+        box-shadow: 0 10px 25px rgba(23, 59, 59, .07);
+    }
+
+    .mobile-tracker-section.guest article {
+        background: linear-gradient(180deg, #fffafb, #fff);
+        border-color: #f2dce2;
+    }
+
+    .mobile-person-heading {
+        align-items: flex-start;
+        margin-bottom: 12px;
+    }
+
+    .mobile-person-heading>div:first-child {
+        min-width: 0;
+        display: grid;
+        gap: 2px;
+    }
+
+    .mobile-person-type {
+        font-size: 10px;
+        color: var(--muted);
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+    }
+
+    .mobile-person-heading>b,
+    .mobile-person-heading div>b {
+        font-size: 19px;
+        line-height: 1.2;
+    }
+
+    .mobile-person-heading .total-plate {
+        min-width: 72px;
+        padding: 8px 9px;
+        border-radius: 14px;
+    }
+
+    .mobile-person-heading .total-plate.guest {
+        min-width: 126px;
+    }
+
+    .mobile-period {
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        padding: 12px 0;
+        min-height: 68px;
+    }
+
+    .period-label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+    }
+
+    .period-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 13px;
+        display: grid;
+        place-items: center;
+        background: #fff5d4;
+        font-size: 19px;
+    }
+
+    .period-icon.night {
+        background: #e7f1ff;
+    }
+
+    .period-label b {
+        display: block;
+        font-size: 15px;
+    }
+
+    .period-label small {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        margin-top: 2px;
+    }
+
+    .period-control {
+        width: 112px;
+    }
+
+    .mobile-period .meal {
+        width: 112px;
+        height: 48px;
+        border-radius: 15px;
+    }
+
+    .mobile-period .meal.onoff {
+        font-size: 20px;
+    }
+
+    .mobile-period .guest-control {
+        width: 112px;
+        min-height: 48px;
+    }
+
+    .mobile-period .guest-main {
+        height: 48px;
+    }
+
+    .mobile-period .guest-main-icons {
+        font-size: 15px;
+        max-width: 48px;
+    }
+
+    .mobile-period .guest-stepper {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: min(330px, calc(100vw - 28px));
+        z-index: 500;
+        padding: 15px;
+        border-radius: 20px;
+        box-shadow: 0 28px 80px rgba(31, 22, 25, .3);
+    }
+
+    .mobile-period .food-step {
+        padding: 10px;
+    }
+
+    .mobile-period .quantity-stepper button {
+        width: 34px;
+        height: 34px;
+        font-size: 21px;
+    }
+
+    .mobile-period .quantity-stepper strong {
+        font-size: 16px;
+        width: 24px;
+    }
+
+    .mobile-period .food-label {
+        font-size: 14px;
+    }
+
+    .mobile-period .done-choice {
+        padding: 12px;
+        font-size: 14px;
+    }
+}

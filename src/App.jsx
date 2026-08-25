@@ -18,6 +18,18 @@ const createId = () => crypto.randomUUID();
 const inviteCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 const guestTypes = [{ key: "veg", code: "1V", emoji: "🥬" }, { key: "egg", code: "1E", emoji: "🥚" }, { key: "fish", code: "1F", emoji: "🐟" }, { key: "meat", code: "1M", emoji: "🍖" }];
 const guestTypeFor = (record) => guestTypes.find((x) => x.key === record?.foodType || x.code === record?.mealCode)?.key || "veg";
+const guestQuantities = (record) => {
+  const totals = Object.fromEntries(guestTypes.map((type) => [type.key, 0]));
+  if (!record || record.status !== "guest") return totals;
+  if (record.quantities && typeof record.quantities === "object") {
+    guestTypes.forEach((type) => { totals[type.key] = Math.max(0, Number(record.quantities[type.key] || 0)); });
+    return totals;
+  }
+  // Backward compatibility with the old one-record = one-meal format.
+  totals[guestTypeFor(record)] = Math.max(1, Number(record.quantity || 1));
+  return totals;
+};
+const guestRecordTotal = (record) => Object.values(guestQuantities(record)).reduce((a, b) => a + b, 0);
 const badgeMap = (personId, records) => {
   const active = Object.values(records || {}).filter((record) => record.memberId === personId && record.status === "on").sort((a, b) => a.date.localeCompare(b.date) || (a.session === "morning" ? -1 : 1));
   return Object.fromEntries(active.map((record, index) => [`${record.date}_${record.session}`, index + 1]));
@@ -25,7 +37,10 @@ const badgeMap = (personId, records) => {
 const boarderTotal = (personId, records) => Object.values(records || {}).filter((record) => record.memberId === personId && record.status === "on").length;
 const guestTotals = (personId, records) => {
   const totals = Object.fromEntries(guestTypes.map((type) => [type.key, 0]));
-  Object.values(records || {}).filter((record) => record.memberId === personId && record.status === "guest").forEach((record) => { totals[guestTypeFor(record)] += 1; });
+  Object.values(records || {}).filter((record) => record.memberId === personId && record.status === "guest").forEach((record) => {
+    const quantities = guestQuantities(record);
+    guestTypes.forEach((type) => { totals[type.key] += quantities[type.key]; });
+  });
   return totals;
 };
 const guestTotalSum = (totals) => Object.values(totals).reduce((a, b) => a + b, 0);
@@ -192,13 +207,34 @@ function Setup({ t, messId, data, user, back, done }) {
 /* ------------------------------------------------------------------ */
 function GuestMealControl({ record, editable, onChange }) {
   const [open, setOpen] = useState(false);
-  const active = record?.status === "guest", type = guestTypeFor(record);
-  if (!active) return <button disabled={!editable} className="meal guest-off" onClick={() => { onChange({ status: "guest", foodType: "veg", mealCode: "1V" }); setOpen(true); }}>＋</button>;
-  return <div className="guest-control">
-    <button disabled={!editable} className="meal guest-on" onClick={() => setOpen(!open)}>{guestTypes.find((x) => x.key === type).emoji}</button>
-    {open && <div className="food-picker">
-      {guestTypes.map((food) => <button key={food.key} onClick={() => { onChange({ status: "guest", foodType: food.key, mealCode: food.code }); setOpen(false); }} className={type === food.key ? "selected" : ""}>{food.emoji}<span>{food.key}</span></button>)}
-      <button className="off-choice" onClick={() => { onChange({ status: "off", foodType: null, mealCode: null }); setOpen(false); }}>OFF</button>
+  const quantities = guestQuantities(record);
+  const total = guestTotalSum(quantities);
+  const update = (foodKey, delta) => {
+    const next = { ...quantities, [foodKey]: Math.max(0, quantities[foodKey] + delta) };
+    const nextTotal = guestTotalSum(next);
+    const firstActive = guestTypes.find((food) => next[food.key] > 0);
+    onChange({
+      status: nextTotal > 0 ? "guest" : "off",
+      quantities: next,
+      foodType: firstActive?.key || null,
+      mealCode: firstActive?.code || null,
+    });
+  };
+  return <div className={`guest-control ${open ? "open" : ""}`}>
+    <button disabled={!editable} className={`meal guest-main ${total ? "guest-on" : "guest-off"}`} onClick={() => editable && setOpen((value) => !value)}>
+      {total ? <><span className="guest-main-icons">{guestTypes.filter((food) => quantities[food.key]).map((food) => food.emoji).join("")}</span><b>{total}</b></> : <><Plus size={18} /><span>Guest</span></>}
+    </button>
+    {open && <div className="food-picker guest-stepper" role="dialog" aria-label="Guest meal quantities">
+      <div className="picker-title">Guest meals <button className="picker-close" onClick={() => setOpen(false)}><X size={15} /></button></div>
+      {guestTypes.map((food) => <div className="food-step" key={food.key}>
+        <span className="food-label">{food.emoji}<b>{food.key}</b></span>
+        <div className="quantity-stepper">
+          <button disabled={!editable || !quantities[food.key]} onClick={() => update(food.key, -1)}>−</button>
+          <strong>{quantities[food.key]}</strong>
+          <button disabled={!editable} onClick={() => update(food.key, 1)}>+</button>
+        </div>
+      </div>)}
+      <button className="done-choice" onClick={() => setOpen(false)}>Done</button>
     </div>}
   </div>;
 }
@@ -244,23 +280,29 @@ function CleanDesktopSection({ title, kind, people, records, editable, change, t
 /* Mobile tracker — date nav strip, one card per person for that day   */
 /* ------------------------------------------------------------------ */
 function MobilePeriod({ label, session, person, day, kind, records, editable, change }) {
-  const record = records?.[`${person.id}_${dateKey(day)}_${session}`], sequence = kind === "boarder" ? badgeMap(person.id, records)[`${dateKey(day)}_${session}`] : null;
-  return <div className="mobile-period"><span>{label}</span>{kind === "boarder" ? <BoarderMealControl session={session} record={record} sequence={sequence} editable={editable} onChange={(patch) => change(person, day, session, patch)} /> : <GuestMealControl record={record} editable={editable} onChange={(patch) => change(person, day, session, patch)} />}</div>;
+  const record = records?.[`${person.id}_${dateKey(day)}_${session}`];
+  const sequence = kind === "boarder" ? badgeMap(person.id, records)[`${dateKey(day)}_${session}`] : null;
+  return <div className={`mobile-period ${kind}`}>
+    <div className="period-label"><span className={`period-icon ${session}`}>{session === "morning" ? "☀️" : "🌙"}</span><div><b>{label}</b><small>{kind === "guest" ? "Add one or many meals" : "Tap to toggle this meal"}</small></div></div>
+    <div className="period-control">{kind === "boarder"
+      ? <BoarderMealControl session={session} record={record} sequence={sequence} editable={editable} onChange={(patch) => change(person, day, session, patch)} />
+      : <GuestMealControl record={record} editable={editable} onChange={(patch) => change(person, day, session, patch)} />}</div>
+  </div>;
 }
 function MobileTrackerSection({ t, title, kind, people, records, editable, change, day }) {
   return <section className={`mobile-tracker-section ${kind}`}>
-    <h2>{title}</h2>
+    <div className="mobile-section-title"><h2>{title}</h2><span>{people.length}</span></div>
     {people.length ? people.map((person) => {
-      const total = kind === "boarder" ? boarderTotal(person.id, records) : null, totals = kind === "guest" ? guestTotals(person.id, records) : null;
+      const total = kind === "boarder" ? boarderTotal(person.id, records) : null;
+      const totals = kind === "guest" ? guestTotals(person.id, records) : null;
       return <article key={person.id}>
-        <div className="mobile-person-heading"><b>{person.name}</b><TotalBadge kind={kind} value={total} totals={totals} t={t} /></div>
+        <div className="mobile-person-heading"><div><span className="mobile-person-type">{kind === "guest" ? "Guest" : "Boarder"}</span><b>{person.name}</b></div><TotalBadge kind={kind} value={total} totals={totals} t={t} /></div>
         <MobilePeriod label={t("morning")} session="morning" person={person} day={day} kind={kind} records={records} editable={editable} change={change} />
         <MobilePeriod label={t("night")} session="night" person={person} day={day} kind={kind} records={records} editable={editable} change={change} />
       </article>;
-    }) : <div className="tracker-empty">{kind === "guest" ? "No guests added for this month yet." : "No boarders yet."}</div>}
+    }) : <div className="tracker-empty">{kind === "guest" ? "No guests added yet. Add them from Members." : "No boarders yet."}</div>}
   </section>;
 }
-
 
 function TrackerHero({ t, data, boarders, guests, records }) {
   const boarderMeals = boarders.reduce((sum, person) => sum + boarderTotal(person.id, records), 0);
@@ -295,26 +337,22 @@ function CurrentMealTracker({ t, data, messId, user }) {
   const boarders = people.filter((person) => statuses[person.id]?.type !== "guest"), guests = people.filter((person) => statuses[person.id]?.type === "guest");
   const change = (person, currentDay, session, patch) => setDoc(doc(db, "messes", messId, "months", monthKey(), "mealRecords", `${person.id}_${dateKey(currentDay)}_${session}`), { memberId: person.id, date: dateKey(currentDay), session, ...patch, updatedAt: serverTimestamp(), updatedBy: user.uid }, { merge: true });
   const dates = Array.from({ length: monthDays() }, (_, i) => i + 1);
+  const selectedDate = new Date(new Date().getFullYear(), new Date().getMonth(), day).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   return <>
     {!editable && <div className="locked-banner">🔒 {t("editLocked")}</div>}
-    <div className="legend"><i className="sun" />{t("morning")}<i className="night" />{t("night")}<i className="guest-dot" />{t("guest")} · Veg / Egg / Fish / Meat</div>
+    <div className="legend"><i className="sun" />{t("morning")}<i className="night" />{t("night")}<i className="guest-dot" />{t("guest")} · Multiple guest meals supported</div>
     <TrackerHero t={t} data={data} boarders={boarders} guests={guests} records={records} />
-
     <div className="clean-desktop">
       <CleanDesktopSection t={t} title={t("boarder")} kind="boarder" people={boarders} records={records} editable={editable} change={change} />
       <CleanDesktopSection t={t} title={t("guest")} kind="guest" people={guests} records={records} editable={editable} change={change} />
     </div>
-
     <div className="clean-mobile">
       <div className="mobile-date-nav">
-        <b className="month-label">{monthLabel()}</b>
-        <div className="date-strip">
-          {dates.map((d) => <button key={d} className={d === day ? "selected" : ""} onClick={() => setDay(d)}>{d}</button>)}
-        </div>
-        <span className="weekday-label">{weekdayLabel(day)}</span>
+        <div className="mobile-day-top"><div><small>{monthLabel()}</small><b>{selectedDate}</b></div><span className="selected-day-chip">Day {day}</span></div>
+        <div className="date-strip">{dates.map((d) => <button key={d} className={d === day ? "selected" : ""} onClick={() => setDay(d)}>{d}</button>)}</div>
       </div>
-      <MobileTrackerSection t={t} title={`${t("boarder")} · ${day}`} kind="boarder" people={boarders} records={records} editable={editable} change={change} day={day} />
-      <MobileTrackerSection t={t} title={`${t("guest")} · ${day}`} kind="guest" people={guests} records={records} editable={editable} change={change} day={day} />
+      <MobileTrackerSection t={t} title={t("boarder")} kind="boarder" people={boarders} records={records} editable={editable} change={change} day={day} />
+      <MobileTrackerSection t={t} title={t("guest")} kind="guest" people={guests} records={records} editable={editable} change={change} day={day} />
     </div>
   </>;
 }
@@ -404,7 +442,7 @@ function Summary({ t, data }) {
   const boarderIds = new Set(people.filter((p) => statuses[p.id]?.type !== "guest").map((p) => p.id)), guestIds = new Set(people.filter((p) => statuses[p.id]?.type === "guest").map((p) => p.id));
   const boarderTotalCount = records.filter((record) => boarderIds.has(record.memberId) && record.status === "on").length;
   const typeTotals = Object.fromEntries(guestTypes.map((type) => [type.key, 0]));
-  records.filter((record) => guestIds.has(record.memberId) && record.status === "guest").forEach((record) => { typeTotals[guestTypeFor(record)] += 1; });
+  records.filter((record) => guestIds.has(record.memberId) && record.status === "guest").forEach((record) => { const quantities = guestQuantities(record); guestTypes.forEach((type) => { typeTotals[type.key] += quantities[type.key]; }); });
   Object.values(data.legacyGuestMeals || {}).forEach((record) => { typeTotals[record.type || "veg"] = (typeTotals[record.type || "veg"] || 0) + Number(record.quantity || 1); });
   return <section className="panel">
     <div className="section-title"><div><span>✨</span><h2>{t("summary")}</h2><p>{t("month")}</p></div></div>
