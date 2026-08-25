@@ -1,0 +1,503 @@
+import { useEffect, useMemo, useState } from "react";
+import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import { collection, collectionGroup, doc, documentId, getDoc, getDocs, limit, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { ArrowLeft, ArrowRight, Check, CircleUserRound, Copy, LogOut, Moon, Pencil, Plus, Settings, ShoppingBasket, Sparkles, Sun, Trash2, Users, Utensils, X } from "lucide-react";
+import { auth, db, firebaseReady, googleProvider } from "./firebase";
+import { useT } from "./i18n";
+
+/* ------------------------------------------------------------------ */
+/* Data helpers — unchanged logic, same Firestore shape as before      */
+/* ------------------------------------------------------------------ */
+const monthKey = () => new Date().toISOString().slice(0, 7);
+const dateKey = (day) => `${monthKey()}-${String(day).padStart(2, "0")}`;
+const todayDay = () => new Date().getDate();
+const monthDays = () => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+const monthLabel = () => new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" });
+const weekdayLabel = (day) => new Date(new Date().getFullYear(), new Date().getMonth(), day).toLocaleDateString(undefined, { weekday: "long" });
+const createId = () => crypto.randomUUID();
+const inviteCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
+const guestTypes = [{ key: "veg", code: "1V", emoji: "🥬" }, { key: "egg", code: "1E", emoji: "🥚" }, { key: "fish", code: "1F", emoji: "🐟" }, { key: "meat", code: "1M", emoji: "🍖" }];
+const guestTypeFor = (record) => guestTypes.find((x) => x.key === record?.foodType || x.code === record?.mealCode)?.key || "veg";
+const badgeMap = (personId, records) => {
+  const active = Object.values(records || {}).filter((record) => record.memberId === personId && record.status === "on").sort((a, b) => a.date.localeCompare(b.date) || (a.session === "morning" ? -1 : 1));
+  return Object.fromEntries(active.map((record, index) => [`${record.date}_${record.session}`, index + 1]));
+};
+const boarderTotal = (personId, records) => Object.values(records || {}).filter((record) => record.memberId === personId && record.status === "on").length;
+const guestTotals = (personId, records) => {
+  const totals = Object.fromEntries(guestTypes.map((type) => [type.key, 0]));
+  Object.values(records || {}).filter((record) => record.memberId === personId && record.status === "guest").forEach((record) => { totals[guestTypeFor(record)] += 1; });
+  return totals;
+};
+const guestTotalSum = (totals) => Object.values(totals).reduce((a, b) => a + b, 0);
+
+/* ------------------------------------------------------------------ */
+/* Shared chrome                                                       */
+/* ------------------------------------------------------------------ */
+function Language({ lang, setLang, light = false }) { return <button className={`language ${light ? "light" : ""}`} onClick={() => setLang(lang === "bn" ? "en" : "bn")}>🌐 {lang === "bn" ? "বাংলা / EN" : "EN / বাংলা"}</button>; }
+function Back({ onClick, label }) { return <button aria-label={label} className="back" onClick={onClick}><ArrowLeft size={18} /></button>; }
+function Screen({ children }) { return <div className="screen"><i className="screen-blob a" /><i className="screen-blob b" /><span className="screen-doodle">🍋</span><div className="screen-inner">{children}</div></div>; }
+
+/* ------------------------------------------------------------------ */
+/* Landing                                                              */
+/* ------------------------------------------------------------------ */
+function Landing({ t, lang, setLang, go }) {
+  const chats = lang === "bn"
+    ? [["রাহুল", "কাল থেকে meal off 🙏"], ["সুমন", "দাদা আজ রাতে খাব না"], ["অরিজিৎ", "আমি ৭ দিন বাড়ি আছি"], ["গোপাল", "কাল সকালে ডিম ভাত রাখিস"]]
+    : [["Rahul", "Meal off from tomorrow 🙏"], ["Suman", "Bro, I'm not eating tonight"], ["Arijit", "I'm home for 7 days"], ["Gopal", "Keep egg rice tomorrow"]];
+  const pillars = lang === "bn"
+    ? [["🍚", "Boarder meal", "সকাল-রাত টগল করো, টোটাল নিজেই যোগ হবে"], ["🍛", "Guest meal", "Veg, Egg, Fish, Meat — সব হিসাব এক জায়গায়"], ["🧺", "বাজার খরচ", "কে কত টাকা দিল, কী কেনা হলো — সব লেখা থাকবে"]]
+    : [["🍚", "Boarder meals", "Toggle morning & night — totals add themselves"], ["🍛", "Guest meals", "Veg, egg, fish, meat, all tracked in one place"], ["🧺", "Bazar spends", "Every rupee and every item, always on record"]];
+  return (
+    <main className="landing">
+      <section className="hero">
+        <Language lang={lang} setLang={setLang} light />
+        <i className="blob blue" /><i className="blob coral" />
+        <span className="sticker rice">🍚</span><span className="sticker chilli">🌶️</span>
+        <div className="eyebrow"><Sparkles size={15} />{t("badge")}</div>
+        <h1>{t("brand")}</h1>
+        <p className="strap">{t("strap")}</p>
+        <p className="hero-copy">{t("hero")}</p>
+        <button className="cta coral-cta" onClick={go}>{t("start")}<ArrowRight /></button>
+      </section>
+      <section className="pillars">
+        {pillars.map(([icon, title, desc]) => <article key={title}><span>{icon}</span><b>{title}</b><p>{desc}</p></article>)}
+      </section>
+      <section className="story">
+        <h2>{t("nightmare")}</h2>
+        <p>{t("familiar")}</p>
+        <div className="chat-stack">{chats.map(([name, message], i) => <div className={`chat ${i % 2 ? "right" : ""}`} key={name}><b>{name}</b><span>{message}</span><small>11:5{i} PM ✓✓</small></div>)}</div>
+        <div className="story-punch">{t("storyEnd")} 🫠</div>
+      </section>
+      <section className="final-cta">
+        <span>🍲</span>
+        <h2>{t("digital")}</h2>
+        <button className="cta full-cta" onClick={go}>{t("start")}<ArrowRight /></button>
+      </section>
+    </main>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Auth / mess creation flow                                          */
+/* ------------------------------------------------------------------ */
+function Auth({ t, user, login, logout, choose }) {
+  return <Screen><div className="auth-card"><div className="pot">🍲</div><h2>{t("brand")}</h2>
+    {user ? <><p>{t("signed")}: <b>{user.displayName}</b></p><button className="cta full" onClick={choose}>{t("continue")}<ArrowRight /></button><button className="text-btn" onClick={logout}>{t("logout")}</button></>
+      : <><p>{t("signIn")} — {t("create")} / {t("join")}</p><button className="google" onClick={login}><CircleUserRound />{t("signIn")}</button></>}
+  </div></Screen>;
+}
+function Choose({ t, setScreen }) {
+  return <Screen><div className="auth-card"><Back label={t("back")} onClick={() => setScreen("auth")} /><div className="pot">🏠</div><h2>{t("brand")}</h2>
+    <button className="cta full" onClick={() => setScreen("create")}>{t("create")}<ArrowRight /></button>
+    <button className="secondary full" onClick={() => setScreen("join")}>{t("join")}<Users /></button>
+  </div></Screen>;
+}
+function Create({ t, user, back, onDone }) {
+  const [name, setName] = useState(""), [people, setPeople] = useState([user.displayName || "", "", ""]), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const create = async () => {
+    if (!name.trim() || busy) return; setBusy(true);
+    try {
+      const mess = doc(collection(db, "messes")), code = inviteCode(), founder = writeBatch(db);
+      founder.set(mess, { name: name.trim(), inviteCode: code, createdBy: user.uid, currentManagerId: user.uid, managerName: user.displayName || "Manager", createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      founder.set(doc(mess, "members", user.uid), { uid: user.uid, linkedUserId: user.uid, displayName: user.displayName || "Manager", role: "manager", active: true, joinedAt: serverTimestamp() });
+      founder.set(doc(db, "invites", code), { messId: mess.id, createdBy: user.uid, createdAt: serverTimestamp() });
+      await founder.commit();
+      const content = writeBatch(db);
+      people.filter((p) => p.trim()).forEach((person) => content.set(doc(mess, "people", createId()), { name: person.trim(), active: true, createdAt: serverTimestamp() }));
+      content.set(doc(mess, "months", monthKey()), { managerId: user.uid, minimumBoarderMeals: 40, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      content.set(doc(db, "users", user.uid), { currentMessId: mess.id, role: "manager", updatedAt: serverTimestamp() }, { merge: true });
+      await content.commit();
+      onDone(mess.id, "setup");
+    } catch (e) { console.error("createMess", e); setError(e.message); setBusy(false); }
+  };
+  return <Screen><div className="flow-card"><Back label={t("back")} onClick={back} /><span className="step">01 / 02</span><h2>{t("createTitle")}</h2>
+    <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("namePlaceholder")} />
+    <h3>{t("members")}</h3><p>{t("memberHint")}</p>
+    {people.map((p, i) => <input key={i} value={p} onChange={(e) => setPeople((all) => all.map((x, n) => n === i ? e.target.value : x))} placeholder={t("personPlaceholder")} />)}
+    <button className="text-btn add" onClick={() => setPeople([...people, ""])}><Plus />{t("add")}</button>
+    {error && <p className="error">{error}</p>}
+    <button className="cta full" disabled={!name.trim() || busy} onClick={create}>{busy ? t("loading") : t("continue")}<ArrowRight /></button>
+  </div></Screen>;
+}
+function Join({ t, user, back, onDone }) {
+  const [code, setCode] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const join = async () => {
+    setBusy(true); setError("");
+    try {
+      const typedCode = code.trim().toUpperCase();
+      const messId = await runTransaction(db, async (tx) => {
+        const invite = await tx.get(doc(db, "invites", typedCode));
+        if (!invite.exists()) throw new Error("invalid-code");
+        const foundMessId = invite.data().messId, membership = doc(db, "messes", foundMessId, "members", user.uid), profile = doc(db, "users", user.uid);
+        const [mess, member] = await Promise.all([tx.get(doc(db, "messes", foundMessId)), tx.get(membership)]);
+        if (!mess.exists()) throw new Error("invalid-code");
+        tx.set(profile, { uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL, currentMessId: foundMessId, role: member.exists() ? member.data().role : "member", updatedAt: serverTimestamp() }, { merge: true });
+        if (!member.exists()) tx.set(membership, { uid: user.uid, linkedUserId: user.uid, displayName: user.displayName || "Member", role: "member", active: true, joinedWithCode: typedCode, joinedAt: serverTimestamp() });
+        return foundMessId;
+      });
+      onDone(messId, "tracker");
+    } catch (e) { console.error("joinMessFirestore", e); setError(e.message === "invalid-code" ? t("invalidCode") : `${t("error")} ${e.message || ""}`); setBusy(false); }
+  };
+  return <Screen><div className="auth-card"><Back label={t("back")} onClick={back} /><div className="pot">🧑‍🍳</div><h2>{t("joinTitle")}</h2><p>{t("joinHint")}</p>
+    <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="X7QP2A" />
+    <button className="cta full" disabled={!code || busy} onClick={join}>{busy ? t("loading") : t("joinNow")}<ArrowRight /></button>
+    {error && <p className="error">{error}</p>}
+  </div></Screen>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Live mess data                                                      */
+/* ------------------------------------------------------------------ */
+function useMess(messId) {
+  const [state, setState] = useState({ loading: true });
+  useEffect(() => {
+    if (!messId) { setState({ loading: false }); return undefined; }
+    let alive = true; setState({ loading: true });
+    const root = `messes/${messId}`, month = monthKey();
+    const observe = (ref, key, map = false) => onSnapshot(ref, (snap) => {
+      if (alive) setState((s) => ({ ...s, [key]: map ? Object.fromEntries(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }])) : snap.data(), loading: false }));
+    }, (error) => { console.error(`Firestore ${key}`, error); if (alive) setState((s) => ({ ...s, error: error.message, loading: false })); });
+    const stops = [
+      observe(doc(db, root), "mess"),
+      observe(collection(db, root, "people"), "people", true),
+      observe(doc(db, root, "months", month), "month"),
+      observe(collection(db, root, "months", month, "memberStatuses"), "statuses", true),
+      observe(collection(db, root, "months", month, "mealRecords"), "records", true),
+      observe(collection(db, root, "months", month, "guestMeals"), "legacyGuestMeals", true),
+      observe(collection(db, root, "expenses"), "expenses", true),
+    ];
+    return () => { alive = false; stops.forEach((stop) => stop()); };
+  }, [messId]);
+  return state;
+}
+
+function Setup({ t, messId, data, user, back, done }) {
+  const [minimum, setMinimum] = useState(data.month?.minimumBoarderMeals ?? 40);
+  const toggle = (id) => setDoc(doc(db, "messes", messId, "months", monthKey(), "memberStatuses", id), { type: data.statuses?.[id]?.type === "guest" ? "boarder" : "guest", updatedAt: serverTimestamp() }, { merge: true });
+  const save = async () => {
+    const batch = writeBatch(db), root = doc(db, "messes", messId, "months", monthKey());
+    batch.set(root, { minimumBoarderMeals: Number(minimum), managerId: user.uid, updatedAt: serverTimestamp() }, { merge: true });
+    Object.values(data.people || {}).forEach((person) => batch.set(doc(root, "memberStatuses", person.id), { type: data.statuses?.[person.id]?.type || "boarder", updatedAt: serverTimestamp() }, { merge: true }));
+    await batch.commit(); done();
+  };
+  return <Screen><div className="flow-card"><Back label={t("back")} onClick={back} /><span className="step">02 / 02</span><h2>{t("monthSetup")}</h2>
+    <div className="minimum"><label>{t("min")}</label><input type="number" value={minimum} onChange={(e) => setMinimum(e.target.value)} /><span>{t("mealsMonth")}</span></div>
+    <div className="member-choices">{Object.values(data.people || {}).map((person) => { const type = data.statuses?.[person.id]?.type || "boarder"; return <button key={person.id} className={type} onClick={() => toggle(person.id)}><b>{person.name}</b><span>{type === "guest" ? `🍛 ${t("guest")}` : `🏠 ${t("boarder")}`}</span></button>; })}</div>
+    <button className="cta full" onClick={save}>{t("tracker")}<ArrowRight /></button>
+  </div></Screen>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Meal controls                                                       */
+/* ------------------------------------------------------------------ */
+function GuestMealControl({ record, editable, onChange }) {
+  const [open, setOpen] = useState(false);
+  const active = record?.status === "guest", type = guestTypeFor(record);
+  if (!active) return <button disabled={!editable} className="meal guest-off" onClick={() => { onChange({ status: "guest", foodType: "veg", mealCode: "1V" }); setOpen(true); }}>＋</button>;
+  return <div className="guest-control">
+    <button disabled={!editable} className="meal guest-on" onClick={() => setOpen(!open)}>{guestTypes.find((x) => x.key === type).emoji}</button>
+    {open && <div className="food-picker">
+      {guestTypes.map((food) => <button key={food.key} onClick={() => { onChange({ status: "guest", foodType: food.key, mealCode: food.code }); setOpen(false); }} className={type === food.key ? "selected" : ""}>{food.emoji}<span>{food.key}</span></button>)}
+      <button className="off-choice" onClick={() => { onChange({ status: "off", foodType: null, mealCode: null }); setOpen(false); }}>OFF</button>
+    </div>}
+  </div>;
+}
+function BoarderMealControl({ record, sequence, editable, onChange, session }) {
+  const on = record?.status === "on", Icon = session === "morning" ? Sun : Moon;
+  return <button disabled={!editable} className={`meal onoff ${on ? session : ""}`} onClick={() => onChange({ status: on ? "off" : "on", mealCode: null, foodType: null })}><Icon size={17} fill={on ? "currentColor" : "none"} />{on && <small>{sequence}</small>}</button>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Desktop tracker — one row per person, dates as columns, total at end */
+/* ------------------------------------------------------------------ */
+function TrackerCell({ person, day, kind, records, editable, change }) {
+  const date = dateKey(day), morning = records?.[`${person.id}_${date}_morning`], night = records?.[`${person.id}_${date}_night`], sequence = kind === "boarder" ? badgeMap(person.id, records) : {};
+  return <div className="clean-cell">
+    {kind === "boarder"
+      ? <><BoarderMealControl session="morning" record={morning} sequence={sequence[`${date}_morning`]} editable={editable} onChange={(patch) => change(person, day, "morning", patch)} /><BoarderMealControl session="night" record={night} sequence={sequence[`${date}_night`]} editable={editable} onChange={(patch) => change(person, day, "night", patch)} /></>
+      : <><GuestMealControl record={morning} editable={editable} onChange={(patch) => change(person, day, "morning", patch)} /><GuestMealControl record={night} editable={editable} onChange={(patch) => change(person, day, "night", patch)} /></>}
+  </div>;
+}
+function TotalBadge({ kind, value, totals, t }) {
+  if (kind === "guest") return <div className="total-plate guest"><b>{guestTotalSum(totals)}</b><small>{t("total")}</small><div className="plate-breakdown">{guestTypes.map((food) => <span key={food.key}>{food.emoji}{totals[food.key]}</span>)}</div></div>;
+  return <div className="total-plate"><b>{value}</b><small>{t("total")}</small></div>;
+}
+function CleanDesktopSection({ title, kind, people, records, editable, change, t }) {
+  const dates = Array.from({ length: monthDays() }, (_, index) => index + 1);
+  return <section className={`clean-section ${kind}`}>
+    <div className="clean-section-heading"><h2>{title}</h2><span>{people.length}</span></div>
+    {people.length ? <div className="clean-table">
+      <div className="clean-header"><b>{t("members")}</b>{dates.map((day) => <b key={day}>{day}</b>)}<b className="total-head">{t("total")}</b></div>
+      {people.map((person) => {
+        const total = kind === "boarder" ? boarderTotal(person.id, records) : null, totals = kind === "guest" ? guestTotals(person.id, records) : null;
+        return <div className="clean-row" key={person.id}>
+          <div className="clean-name"><b>{person.name}</b></div>
+          {dates.map((day) => <TrackerCell key={day} person={person} day={day} kind={kind} records={records} editable={editable} change={change} />)}
+          <div className="clean-total"><TotalBadge kind={kind} value={total} totals={totals} t={t} /></div>
+        </div>;
+      })}
+    </div> : <div className="tracker-empty">{kind === "guest" ? "No guests added for this month yet." : "No boarders yet."}</div>}
+  </section>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Mobile tracker — date nav strip, one card per person for that day   */
+/* ------------------------------------------------------------------ */
+function MobilePeriod({ label, session, person, day, kind, records, editable, change }) {
+  const record = records?.[`${person.id}_${dateKey(day)}_${session}`], sequence = kind === "boarder" ? badgeMap(person.id, records)[`${dateKey(day)}_${session}`] : null;
+  return <div className="mobile-period"><span>{label}</span>{kind === "boarder" ? <BoarderMealControl session={session} record={record} sequence={sequence} editable={editable} onChange={(patch) => change(person, day, session, patch)} /> : <GuestMealControl record={record} editable={editable} onChange={(patch) => change(person, day, session, patch)} />}</div>;
+}
+function MobileTrackerSection({ t, title, kind, people, records, editable, change, day }) {
+  return <section className={`mobile-tracker-section ${kind}`}>
+    <h2>{title}</h2>
+    {people.length ? people.map((person) => {
+      const total = kind === "boarder" ? boarderTotal(person.id, records) : null, totals = kind === "guest" ? guestTotals(person.id, records) : null;
+      return <article key={person.id}>
+        <div className="mobile-person-heading"><b>{person.name}</b><TotalBadge kind={kind} value={total} totals={totals} t={t} /></div>
+        <MobilePeriod label={t("morning")} session="morning" person={person} day={day} kind={kind} records={records} editable={editable} change={change} />
+        <MobilePeriod label={t("night")} session="night" person={person} day={day} kind={kind} records={records} editable={editable} change={change} />
+      </article>;
+    }) : <div className="tracker-empty">{kind === "guest" ? "No guests added for this month yet." : "No boarders yet."}</div>}
+  </section>;
+}
+
+
+function TrackerHero({ t, data, boarders, guests, records }) {
+  const boarderMeals = boarders.reduce((sum, person) => sum + boarderTotal(person.id, records), 0);
+  const guestMeals = guests.reduce((sum, person) => sum + guestTotalSum(guestTotals(person.id, records)), 0);
+  return <section className="tracker-hero">
+    <div className="tracker-hero-copy">
+      <div className="tracker-kicker"><span>🍲</span>{monthLabel()}</div>
+      <h1>Meal tracker, made simple.</h1>
+      <p>Tap a meal to update it instantly. Boarders and guests stay together in one clear monthly view.</p>
+      <div className="tracker-stats">
+        <div><strong>{boarders.length}</strong><span>{t("boarder")}</span></div>
+        <div><strong>{guests.length}</strong><span>{t("guest")}</span></div>
+        <div><strong>{boarderMeals + guestMeals}</strong><span>{t("total")} meals</span></div>
+      </div>
+    </div>
+    <div className="tracker-hero-art" aria-hidden="true">
+      <div className="steam steam-one" />
+      <div className="steam steam-two" />
+      <div className="steam steam-three" />
+      <div className="pot-art">🍛</div>
+      <span className="float-food one">🌶️</span>
+      <span className="float-food two">🥬</span>
+      <span className="float-food three">🥚</span>
+    </div>
+  </section>;
+}
+
+function CurrentMealTracker({ t, data, messId, user }) {
+  const [day, setDay] = useState(todayDay());
+  const people = Object.values(data.people || {}).filter((person) => person.active !== false), records = data.records || {}, statuses = data.statuses || {};
+  const editable = data.month?.managerId === user.uid;
+  const boarders = people.filter((person) => statuses[person.id]?.type !== "guest"), guests = people.filter((person) => statuses[person.id]?.type === "guest");
+  const change = (person, currentDay, session, patch) => setDoc(doc(db, "messes", messId, "months", monthKey(), "mealRecords", `${person.id}_${dateKey(currentDay)}_${session}`), { memberId: person.id, date: dateKey(currentDay), session, ...patch, updatedAt: serverTimestamp(), updatedBy: user.uid }, { merge: true });
+  const dates = Array.from({ length: monthDays() }, (_, i) => i + 1);
+  return <>
+    {!editable && <div className="locked-banner">🔒 {t("editLocked")}</div>}
+    <div className="legend"><i className="sun" />{t("morning")}<i className="night" />{t("night")}<i className="guest-dot" />{t("guest")} · Veg / Egg / Fish / Meat</div>
+    <TrackerHero t={t} data={data} boarders={boarders} guests={guests} records={records} />
+
+    <div className="clean-desktop">
+      <CleanDesktopSection t={t} title={t("boarder")} kind="boarder" people={boarders} records={records} editable={editable} change={change} />
+      <CleanDesktopSection t={t} title={t("guest")} kind="guest" people={guests} records={records} editable={editable} change={change} />
+    </div>
+
+    <div className="clean-mobile">
+      <div className="mobile-date-nav">
+        <b className="month-label">{monthLabel()}</b>
+        <div className="date-strip">
+          {dates.map((d) => <button key={d} className={d === day ? "selected" : ""} onClick={() => setDay(d)}>{d}</button>)}
+        </div>
+        <span className="weekday-label">{weekdayLabel(day)}</span>
+      </div>
+      <MobileTrackerSection t={t} title={`${t("boarder")} · ${day}`} kind="boarder" people={boarders} records={records} editable={editable} change={change} day={day} />
+      <MobileTrackerSection t={t} title={`${t("guest")} · ${day}`} kind="guest" people={guests} records={records} editable={editable} change={change} day={day} />
+    </div>
+  </>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Members — boarders + guests management                              */
+/* ------------------------------------------------------------------ */
+function Modal({ title, children, close }) { return <div className="modal-bg" onClick={close}><div className="modal" onClick={(e) => e.stopPropagation()}><button className="close" onClick={close}><X /></button><h2>{title}</h2>{children}</div></div>; }
+
+function Members({ t, messId, data, manager }) {
+  const [name, setName] = useState(""), [editing, setEditing] = useState(null), [removing, setRemoving] = useState(null);
+  const people = Object.values(data.people || {}).filter((p) => p.active !== false);
+  const boarders = people.filter((p) => data.statuses?.[p.id]?.type !== "guest");
+  const add = async () => { if (!name.trim()) return; await setDoc(doc(db, "messes", messId, "people", createId()), { name: name.trim(), active: true, createdAt: serverTimestamp() }); setName(""); };
+  return <section className="panel boarder-panel">
+    <div className="section-title"><div><span>👥</span><h2>{t("boarder")}</h2><p>{boarders.length} {t("activeMembers")}</p></div></div>
+    {manager && <div className="inline-form"><input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("personPlaceholder")} /><button className="cta" onClick={add}><Plus />{t("addMember")}</button></div>}
+    <div className="member-list">{boarders.map((person) => <article key={person.id}>
+      <div className="avatar">{person.name.slice(0, 1)}</div>
+      <div><b>{person.name}</b><small>{t("boarder")}</small></div>
+      {manager && <div className="member-actions"><button onClick={() => setEditing(person)}><Pencil size={16} /></button><button onClick={() => setRemoving(person)}><Trash2 size={16} /></button></div>}
+    </article>)}
+      {!boarders.length && <div className="tracker-empty">No boarders yet.</div>}
+    </div>
+    {editing && <Modal title={t("edit")} close={() => setEditing(null)}>
+      <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+      <button className="cta full" onClick={async () => { await updateDoc(doc(db, "messes", messId, "people", editing.id), { name: editing.name.trim(), updatedAt: serverTimestamp() }); setEditing(null); }}>{t("save")}</button>
+    </Modal>}
+    {removing && <Modal title={t("remove")} close={() => setRemoving(null)}>
+      <p>{t("removeWarning")}</p>
+      <button className="danger full" onClick={async () => { await updateDoc(doc(db, "messes", messId, "people", removing.id), { active: false, removedAt: serverTimestamp() }); setRemoving(null); }}>{t("confirm")}</button>
+    </Modal>}
+  </section>;
+}
+
+function GuestManagement({ t, messId, data, manager }) {
+  const [name, setName] = useState(""), [editing, setEditing] = useState(null), [removing, setRemoving] = useState(null);
+  const guests = Object.values(data.people || {}).filter((person) => person.active !== false && data.statuses?.[person.id]?.type === "guest");
+  const add = async () => {
+    if (!name.trim()) return;
+    const person = doc(db, "messes", messId, "people", createId()), batch = writeBatch(db);
+    batch.set(person, { name: name.trim(), active: true, createdAt: serverTimestamp() });
+    batch.set(doc(db, "messes", messId, "months", monthKey(), "memberStatuses", person.id), { type: "guest", updatedAt: serverTimestamp() });
+    await batch.commit(); setName("");
+  };
+  return <section className="panel guest-panel">
+    <div className="section-title"><div><span>🍛</span><h2>{t("guest")}</h2><p>{guests.length}</p></div></div>
+    {manager && <div className="inline-form"><input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("guestName")} /><button className="cta" onClick={add}><Plus />{t("add")}</button></div>}
+    <div className="member-list">{guests.map((person) => <article key={person.id}>
+      <div className="avatar guest">{person.name.slice(0, 1)}</div>
+      <div><b>{person.name}</b><small>{t("guest")}</small></div>
+      {manager && <div className="member-actions"><button onClick={() => setEditing(person)}><Pencil size={16} /></button><button onClick={() => setRemoving(person)}><Trash2 size={16} /></button></div>}
+    </article>)}
+      {!guests.length && <div className="tracker-empty">No guests added for this month yet.</div>}
+    </div>
+    {editing && <Modal title={t("edit")} close={() => setEditing(null)}>
+      <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+      <button className="cta full" onClick={async () => { await updateDoc(doc(db, "messes", messId, "people", editing.id), { name: editing.name.trim(), updatedAt: serverTimestamp() }); setEditing(null); }}>{t("save")}</button>
+    </Modal>}
+    {removing && <Modal title={t("remove")} close={() => setRemoving(null)}>
+      <p>{t("removeWarning")}</p>
+      <button className="danger full" onClick={async () => { await updateDoc(doc(db, "messes", messId, "people", removing.id), { active: false, removedAt: serverTimestamp() }); setRemoving(null); }}>{t("confirm")}</button>
+    </Modal>}
+  </section>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Bazar / Summary / Settings                                          */
+/* ------------------------------------------------------------------ */
+function Expenses({ t, messId, data, manager }) {
+  const [item, setItem] = useState(""), [amount, setAmount] = useState(""), [category, setCategory] = useState("other");
+  const expenses = Object.values(data.expenses || {}), total = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const add = async () => { if (!item.trim() || !amount) return; await setDoc(doc(db, "messes", messId, "expenses", createId()), { item: item.trim(), amount: Number(amount), category, createdAt: serverTimestamp() }); setItem(""); setAmount(""); };
+  return <section className="panel">
+    <div className="section-title"><div><span>🧺</span><h2>{t("bazar")}</h2><p>{t("recentExpenses")}</p></div><strong className="rupees">₹{total}</strong></div>
+    {manager && <div className="expense-form">
+      <input value={item} onChange={(e) => setItem(e.target.value)} placeholder={t("item")} />
+      <input value={amount} type="number" onChange={(e) => setAmount(e.target.value)} placeholder={t("amount")} />
+      <div className="chips">{["veg", "fish", "meat", "egg", "other"].map((key) => <button className={category === key ? "active" : ""} key={key} onClick={() => setCategory(key)}>{t(key)}</button>)}</div>
+      <button className="cta full" onClick={add}>{t("addExpense")}<Plus /></button>
+    </div>}
+    <div className="expense-list">{expenses.map((expense) => <article key={expense.id}><span>🛍️</span><b>{expense.item}</b><small>{expense.category}</small><strong>₹{expense.amount}</strong></article>)}{!expenses.length && <p>{t("noExpenses")}</p>}</div>
+  </section>;
+}
+function Summary({ t, data }) {
+  const people = Object.values(data.people || {}).filter((p) => p.active !== false), statuses = data.statuses || {}, records = Object.values(data.records || {});
+  const boarderIds = new Set(people.filter((p) => statuses[p.id]?.type !== "guest").map((p) => p.id)), guestIds = new Set(people.filter((p) => statuses[p.id]?.type === "guest").map((p) => p.id));
+  const boarderTotalCount = records.filter((record) => boarderIds.has(record.memberId) && record.status === "on").length;
+  const typeTotals = Object.fromEntries(guestTypes.map((type) => [type.key, 0]));
+  records.filter((record) => guestIds.has(record.memberId) && record.status === "guest").forEach((record) => { typeTotals[guestTypeFor(record)] += 1; });
+  Object.values(data.legacyGuestMeals || {}).forEach((record) => { typeTotals[record.type || "veg"] = (typeTotals[record.type || "veg"] || 0) + Number(record.quantity || 1); });
+  return <section className="panel">
+    <div className="section-title"><div><span>✨</span><h2>{t("summary")}</h2><p>{t("month")}</p></div></div>
+    <div className="report-grid">
+      <article><strong>{boarderTotalCount}</strong><span>{t("boarder")} meals</span></article>
+      <article><strong>{people.length}</strong><span>{t("members")}</span></article>
+      <article><strong>{Object.values(typeTotals).reduce((a, b) => a + b, 0)}</strong><span>{t("guestMeals")}</span></article>
+      <article><strong>₹{Object.values(data.expenses || {}).reduce((a, x) => a + Number(x.amount || 0), 0)}</strong><span>{t("totalExpense")}</span></article>
+    </div>
+    <div className="guest-totals"><b>{t("guestMeals")}</b>{guestTypes.map((type) => <span key={type.key}>{type.emoji} {t(type.key)}: <strong>{typeTotals[type.key]}</strong></span>)}</div>
+  </section>;
+}
+function SettingsPanel({ t, messId, data, manager }) {
+  const [name, setName] = useState(data.mess?.name || ""), [copied, setCopied] = useState(false);
+  if (!manager) return <section className="panel"><h2>{t("settings")}</h2><p>{t("managerOnly")}</p></section>;
+  const regenerate = async () => {
+    if (!confirm(t("confirmRegenerate"))) return;
+    const old = data.mess?.inviteCode, next = inviteCode(), batch = writeBatch(db);
+    batch.set(doc(db, "invites", next), { messId, createdBy: data.mess.createdBy, createdAt: serverTimestamp() });
+    batch.update(doc(db, "messes", messId), { inviteCode: next, updatedAt: serverTimestamp() });
+    if (old && (await getDoc(doc(db, "invites", old))).exists()) batch.delete(doc(db, "invites", old));
+    await batch.commit();
+  };
+  return <section className="panel">
+    <div className="section-title"><div><span>⚙️</span><h2>{t("settings")}</h2><p>{t("manager")}: {data.mess?.managerName}</p></div></div>
+    <label>{t("messName")}</label>
+    <div className="settings-row"><input value={name} onChange={(e) => setName(e.target.value)} /><button className="cta" onClick={() => updateDoc(doc(db, "messes", messId), { name: name.trim(), updatedAt: serverTimestamp() })}>{t("save")}</button></div>
+    <label>{t("joinCode")}</label>
+    <div className="code-card"><strong>{data.mess?.inviteCode}</strong><button onClick={async () => { await navigator.clipboard.writeText(data.mess?.inviteCode || ""); setCopied(true); setTimeout(() => setCopied(false), 1200); }}><Copy size={16} />{copied ? t("copied") : t("copy")}</button><button className="danger-lite" onClick={regenerate}>{t("regenerate")}</button></div>
+  </section>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dashboard shell                                                     */
+/* ------------------------------------------------------------------ */
+function Dashboard({ t, lang, setLang, user, messId, data, logout }) {
+  const [tab, setTab] = useState("meals"), manager = data.month?.managerId === user.uid;
+  const tabs = [["meals", Utensils, t("meals")], ["members", Users, t("members")], ["bazar", ShoppingBasket, t("bazar")], ["reports", Sparkles, t("reports")], ["settings", Settings, t("settings")]];
+  return <main className="tracker">
+    <header>
+      <div><span>🍲</span><b>{data.mess?.name}</b><small>{t("code")}: {data.mess?.inviteCode}</small></div>
+      <nav><Language lang={lang} setLang={setLang} light /><button onClick={logout}><LogOut size={16} />{t("logout")}</button></nav>
+    </header>
+    <div className="tabs">{tabs.map(([key, Icon, label]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><Icon size={17} /><span>{label}</span></button>)}</div>
+    {tab === "meals" && <CurrentMealTracker t={t} data={data} messId={messId} user={user} />}
+    {tab === "members" && <div className="members-page"><Members t={t} messId={messId} data={data} manager={manager} /><GuestManagement t={t} messId={messId} data={data} manager={manager} /></div>}
+    {tab === "bazar" && <Expenses t={t} messId={messId} data={data} manager={manager} />}
+    {tab === "reports" && <Summary t={t} data={data} />}
+    {tab === "settings" && <SettingsPanel t={t} messId={messId} data={data} manager={manager} />}
+  </main>;
+}
+
+/* ------------------------------------------------------------------ */
+/* App root — auth restore, routing (unchanged logic)                  */
+/* ------------------------------------------------------------------ */
+export default function App() {
+  const [lang, setLang] = useState(() => localStorage.getItem("hari-language") || "bn");
+  const [user, setUser] = useState(null), [ready, setReady] = useState(false), [screen, setScreen] = useState("landing"), [messId, setMessId] = useState(null);
+  const t = useT(lang), data = useMess(messId);
+  useEffect(() => { localStorage.setItem("hari-language", lang); }, [lang]);
+  useEffect(() => {
+    if (!firebaseReady) return undefined;
+    let alive = true;
+    const unsubscribe = onAuthStateChanged(auth, (current) => {
+      const restore = async () => {
+        if (!current) { if (alive) { setUser(null); setReady(true); } return; }
+        try {
+          const profile = doc(db, "users", current.uid), snap = await getDoc(profile);
+          let currentMessId = snap.data()?.currentMessId;
+          if (!currentMessId) {
+            const legacy = await getDocs(query(collectionGroup(db, "members"), where(documentId(), "==", current.uid), limit(1)));
+            if (!legacy.empty) currentMessId = legacy.docs[0].ref.parent.parent.id;
+          }
+          await setDoc(profile, { uid: current.uid, displayName: current.displayName, email: current.email, photoURL: current.photoURL, currentMessId: currentMessId || null, updatedAt: serverTimestamp(), createdAt: snap.exists() ? snap.data().createdAt : serverTimestamp() }, { merge: true });
+          if (alive) { setUser(current); if (currentMessId) { setMessId(currentMessId); setScreen("tracker"); } else setScreen("auth"); }
+        } catch (error) { console.error("restoreSession", error); if (alive) { setUser(current); setScreen("auth"); } }
+        finally { if (alive) setReady(true); }
+      };
+      restore();
+    });
+    return () => { alive = false; unsubscribe(); };
+  }, []);
+  const enter = (id, next) => { setMessId(id); setScreen(next); };
+  const logout = async () => { await signOut(auth); setMessId(null); setScreen("landing"); };
+  const login = async () => { try { await signInWithPopup(auth, googleProvider); } catch (error) { console.error("googleLogin", error); } };
+
+  if (!firebaseReady) return <><Language lang={lang} setLang={setLang} /><Screen><div className="auth-card"><h2>{t("noConfig")}</h2><p>{t("noConfigDetail")}</p></div></Screen></>;
+  if (!ready || (messId && data.loading)) return <Screen><div className="auth-card"><div className="pot">🍲</div><p>{t("loading")}</p></div></Screen>;
+  if (messId && screen === "setup") return <Setup t={t} messId={messId} data={data} user={user} back={() => setScreen("choose")} done={() => setScreen("tracker")} />;
+  if (messId && screen === "tracker") return <Dashboard t={t} lang={lang} setLang={setLang} user={user} messId={messId} data={data} logout={logout} />;
+  if (screen === "landing") return <Landing t={t} lang={lang} setLang={setLang} go={() => setScreen("auth")} />;
+  if (screen === "auth") return <Auth t={t} user={user} login={login} logout={logout} choose={() => setScreen("choose")} />;
+  if (screen === "choose") return <Choose t={t} setScreen={setScreen} />;
+  if (screen === "create") return <Create t={t} user={user} back={() => setScreen("choose")} onDone={enter} />;
+  return <Join t={t} user={user} back={() => setScreen("choose")} onDone={enter} />;
+}
