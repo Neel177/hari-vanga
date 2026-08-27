@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { collection, collectionGroup, doc, documentId, getDoc, getDocs, limit, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { ArrowLeft, ArrowRight, Check, CircleUserRound, Copy, LogOut, Moon, Pencil, Plus, Settings, ShoppingBasket, Sparkles, Sun, Trash2, Users, Utensils, X } from "lucide-react";
@@ -8,12 +8,65 @@ import { useT } from "./i18n";
 /* ------------------------------------------------------------------ */
 /* Data helpers — unchanged logic, same Firestore shape as before      */
 /* ------------------------------------------------------------------ */
-const monthKey = () => new Date().toISOString().slice(0, 7);
-const dateKey = (day) => `${monthKey()}-${String(day).padStart(2, "0")}`;
-const todayDay = () => new Date().getDate();
-const monthDays = () => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-const monthLabel = () => new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" });
-const weekdayLabel = (day) => new Date(new Date().getFullYear(), new Date().getMonth(), day).toLocaleDateString(undefined, { weekday: "long" });
+/* ------------------------------------------------------------------ */
+/* India date & time helpers                                          */
+/* ------------------------------------------------------------------ */
+
+const INDIA_TIME_ZONE = "Asia/Kolkata";
+
+const getIndiaParts = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: INDIA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const value = (type) =>
+    parts.find((part) => part.type === type)?.value || "";
+
+  return {
+    year: value("year"),
+    month: value("month"),
+    day: value("day"),
+  };
+};
+
+const getIndiaDateKey = (date = new Date()) => {
+  const { year, month, day } = getIndiaParts(date);
+  return `${year}-${month}-${day}`;
+};
+
+const monthKey = () => getIndiaDateKey().slice(0, 7);
+
+const dateKey = (day) => {
+  const { year, month } = getIndiaParts();
+  return `${year}-${month}-${String(day).padStart(2, "0")}`;
+};
+
+const todayDay = () => Number(getIndiaParts().day);
+
+const monthDays = () => {
+  const { year, month } = getIndiaParts();
+  return new Date(Number(year), Number(month), 0).getDate();
+};
+
+const monthLabel = () =>
+  new Intl.DateTimeFormat(undefined, {
+    timeZone: INDIA_TIME_ZONE,
+    month: "long",
+    year: "numeric",
+  }).format(new Date());
+
+const weekdayLabel = (day) => {
+  const { year, month } = getIndiaParts();
+
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone: INDIA_TIME_ZONE,
+    weekday: "long",
+  }).format(new Date(Number(year), Number(month) - 1, day));
+};
+
 const createId = () => crypto.randomUUID();
 const inviteCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 const guestTypes = [{ key: "veg", code: "1V", emoji: "🥬" }, { key: "egg", code: "1E", emoji: "🥚" }, { key: "fish", code: "1F", emoji: "🐟" }, { key: "meat", code: "1M", emoji: "🍖" }];
@@ -45,6 +98,77 @@ const guestTotals = (personId, records) => {
 };
 const guestTotalSum = (totals) => Object.values(totals).reduce((a, b) => a + b, 0);
 
+
+function useIndiaClock() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    let active = true;
+    let offset = 0;
+
+    const syncIndiaTime = async () => {
+      try {
+        const response = await fetch(
+          "https://timeapi.io/api/time/current/zone?timeZone=Asia%2FKolkata"
+        );
+
+        if (!response.ok) throw new Error("India time unavailable");
+
+        const data = await response.json();
+
+        const remoteDate = new Date(
+          `${data.date}T${data.time}${data.milliSeconds !== undefined
+            ? `.${String(data.milliSeconds).padStart(3, "0")}`
+            : ""
+          }+05:30`
+        );
+
+        if (!Number.isNaN(remoteDate.getTime())) {
+          offset = remoteDate.getTime() - Date.now();
+
+          if (active) {
+            setNow(new Date(Date.now() + offset));
+          }
+        }
+      } catch (error) {
+        console.warn(
+          "India network time unavailable, using Asia/Kolkata fallback.",
+          error
+        );
+      }
+    };
+
+    // Page immediately render হবে। API-এর জন্য অপেক্ষা করবে না।
+    syncIndiaTime();
+
+    const timer = setInterval(() => {
+      if (active) {
+        setNow(new Date(Date.now() + offset));
+      }
+    }, 1000);
+
+    // মাঝে মাঝে network time আবার sync করবে
+    const resyncTimer = setInterval(syncIndiaTime, 5 * 60 * 1000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+      clearInterval(resyncTimer);
+    };
+  }, []);
+
+  return now;
+}
+
+function BrandMark({ className = "" }) {
+  return (
+    <img
+      className={`brand-mark ${className}`}
+      src="/hari-vanga-logo.png"
+      alt="Hari Vanga"
+    />
+  );
+}
 /* ------------------------------------------------------------------ */
 /* Shared chrome                                                       */
 /* ------------------------------------------------------------------ */
@@ -304,57 +428,233 @@ function MobileTrackerSection({ t, title, kind, people, records, editable, chang
   </section>;
 }
 
-function TrackerHero({ t, data, boarders, guests, records }) {
-  const boarderMeals = boarders.reduce((sum, person) => sum + boarderTotal(person.id, records), 0);
-  const guestMeals = guests.reduce((sum, person) => sum + guestTotalSum(guestTotals(person.id, records)), 0);
-  return <section className="tracker-hero">
-    <div className="tracker-hero-copy">
-      <div className="tracker-kicker"><span>🍲</span>{monthLabel()}</div>
-      <h1>Meal tracker, made simple.</h1>
-      <p>Tap a meal to update it instantly. Boarders and guests stay together in one clear monthly view.</p>
-      <div className="tracker-stats">
-        <div><strong>{boarders.length}</strong><span>{t("boarder")}</span></div>
-        <div><strong>{guests.length}</strong><span>{t("guest")}</span></div>
-        <div><strong>{boarderMeals + guestMeals}</strong><span>{t("total")} meals</span></div>
+function TrackerHero({
+  t,
+  data,
+  boarders,
+  guests,
+  records,
+  indiaNow,
+}) {
+  const boarderMeals = boarders.reduce(
+    (sum, person) => sum + boarderTotal(person.id, records),
+    0
+  );
+
+  const guestMeals = guests.reduce(
+    (sum, person) =>
+      sum + guestTotalSum(guestTotals(person.id, records)),
+    0
+  );
+
+  const indiaDate = new Intl.DateTimeFormat(undefined, {
+    timeZone: INDIA_TIME_ZONE,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(indiaNow);
+
+  const indiaTime = new Intl.DateTimeFormat(undefined, {
+    timeZone: INDIA_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(indiaNow);
+
+  const indiaMonth = new Intl.DateTimeFormat(undefined, {
+    timeZone: INDIA_TIME_ZONE,
+    month: "long",
+    year: "numeric",
+  }).format(indiaNow);
+
+  const managerName =
+    data.mess?.managerName?.trim() || "Manager";
+
+  return (
+    <section className="tracker-hero">
+      <div className="hero-orb hero-orb-one" />
+      <div className="hero-orb hero-orb-two" />
+      <div className="hero-leaf hero-leaf-one">🍃</div>
+      <div className="hero-leaf hero-leaf-two">✦</div>
+
+      {/* Live India time — independent overlay, does not increase hero height */}
+      <div className="india-live-card">
+        <div className="india-live-top">
+          <span className="india-live-pulse">
+            <i />
+            LIVE INDIA
+          </span>
+
+          <span className="india-live-zone">
+            🇮🇳 IST
+          </span>
+        </div>
+
+        <strong>{indiaTime}</strong>
+
+        <div className="india-live-date">
+          <span>{indiaDate}</span>
+          <b>{indiaMonth}</b>
+        </div>
       </div>
-    </div>
-    <div className="tracker-hero-art" aria-hidden="true">
-      <div className="steam steam-one" />
-      <div className="steam steam-two" />
-      <div className="steam steam-three" />
-      <div className="pot-art">🍛</div>
-      <span className="float-food one">🌶️</span>
-      <span className="float-food two">🥬</span>
-      <span className="float-food three">🥚</span>
-    </div>
-  </section>;
+
+      <div className="tracker-hero-copy">
+        <div className="tracker-kicker">
+          <BrandMark className="kicker-logo" />
+          <span>{indiaMonth}</span>
+        </div>
+
+        <h1>Meal tracker, made simple.</h1>
+
+        <p>
+          Tap a meal to update it instantly. Boarders and guests stay
+          together in one clear monthly view.
+        </p>
+
+        <div className="tracker-stats">
+          <div>
+            <strong>{boarders.length}</strong>
+            <span>{t("boarder")}</span>
+          </div>
+
+          <div>
+            <strong>{guests.length}</strong>
+            <span>{t("guest")}</span>
+          </div>
+
+          <div>
+            <strong>{boarderMeals + guestMeals}</strong>
+            <span>{t("total")} meals</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Manager — lower right */}
+      <div className="hero-manager">
+        <span>Manager</span>
+        <strong>{managerName}</strong>
+      </div>
+
+      <div className="tracker-hero-art" aria-hidden="true">
+        <div className="steam steam-one" />
+        <div className="steam steam-two" />
+        <div className="steam steam-three" />
+
+        <div className="hero-art-ring ring-one" />
+        <div className="hero-art-ring ring-two" />
+
+        <BrandMark className="hero-brand-logo" />
+
+        <div className="pot-art">🍛</div>
+
+        <span className="float-food one">🌶️</span>
+        <span className="float-food two">🥬</span>
+        <span className="float-food three">🥚</span>
+      </div>
+    </section>
+  );
 }
 
 function CurrentMealTracker({ t, data, messId, user }) {
-  const [day, setDay] = useState(todayDay());
-  const people = Object.values(data.people || {}).filter((person) => person.active !== false), records = data.records || {}, statuses = data.statuses || {};
-  const editable = data.month?.managerId === user.uid;
-  const boarders = people.filter((person) => statuses[person.id]?.type !== "guest"), guests = people.filter((person) => statuses[person.id]?.type === "guest");
-  const change = (person, currentDay, session, patch) => setDoc(doc(db, "messes", messId, "months", monthKey(), "mealRecords", `${person.id}_${dateKey(currentDay)}_${session}`), { memberId: person.id, date: dateKey(currentDay), session, ...patch, updatedAt: serverTimestamp(), updatedBy: user.uid }, { merge: true });
+  const indiaNow = useIndiaClock();
+
+  const dateStripRef = useRef(null);
+  const dateButtonRefs = useRef({});
+
+  const [day, setDay] = useState(() => todayDay());
+
+  const [indiaDayKey, setIndiaDayKey] = useState(() =>
+    getIndiaDateKey()
+  );
+  useEffect(() => {
+    const nextDayKey = getIndiaDateKey(indiaNow);
+
+    if (nextDayKey !== indiaDayKey) {
+      const nextDay = Number(getIndiaParts(indiaNow).day);
+
+      setIndiaDayKey(nextDayKey);
+      setDay(nextDay);
+    }
+  }, [indiaNow, indiaDayKey]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const strip = dateStripRef.current;
+      const selectedButton = dateButtonRefs.current[day];
+
+      if (!strip || !selectedButton) return;
+
+      const targetLeft =
+        selectedButton.offsetLeft -
+        (strip.clientWidth - selectedButton.offsetWidth) / 2;
+
+      strip.scrollTo({
+        left: Math.max(0, targetLeft),
+        behavior: "smooth",
+      });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [day]);
+
+  const manager = data.month?.managerId === user.uid;
+  const people = Object.values(data.people || {}).filter((p) => p.active !== false);
+  const boarders = people.filter((p) => data.statuses?.[p.id]?.type !== "guest");
+  const guests = people.filter((p) => data.statuses?.[p.id]?.type === "guest");
   const dates = Array.from({ length: monthDays() }, (_, i) => i + 1);
-  const selectedDate = new Date(new Date().getFullYear(), new Date().getMonth(), day).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  return <>
-    {!editable && <div className="locked-banner">🔒 {t("editLocked")}</div>}
-    <div className="legend"><i className="sun" />{t("morning")}<i className="night" />{t("night")}<i className="guest-dot" />{t("guest")} · Multiple guest meals supported</div>
-    <TrackerHero t={t} data={data} boarders={boarders} guests={guests} records={records} />
-    <div className="clean-desktop">
-      <CleanDesktopSection t={t} title={t("boarder")} kind="boarder" people={boarders} records={records} editable={editable} change={change} />
-      <CleanDesktopSection t={t} title={t("guest")} kind="guest" people={guests} records={records} editable={editable} change={change} />
-    </div>
-    <div className="clean-mobile">
-      <div className="mobile-date-nav">
-        <div className="mobile-day-top"><div><small>{monthLabel()}</small><b>{selectedDate}</b></div><span className="selected-day-chip">Day {day}</span></div>
-        <div className="date-strip">{dates.map((d) => <button key={d} className={d === day ? "selected" : ""} onClick={() => setDay(d)}>{d}</button>)}</div>
+
+  const change = async (person, dayNum, session, patch) => {
+    const date = dateKey(dayNum);
+    const ref = doc(db, "messes", messId, "months", monthKey(), "mealRecords", `${person.id}_${date}_${session}`);
+    await setDoc(ref, { memberId: person.id, date, session, ...patch, updatedAt: serverTimestamp() }, { merge: true });
+  };
+
+  return (
+    <>
+      <TrackerHero t={t} data={data} boarders={boarders} guests={guests} records={data.records} indiaNow={indiaNow} />
+
+      <div className="legend">
+        <span>{t("morning")}</span><i className="sun" />
+        <span>{t("night")}</span><i className="night" />
+        <span>{t("guest")}</span><i className="guest-dot" />
       </div>
-      <MobileTrackerSection t={t} title={t("boarder")} kind="boarder" people={boarders} records={records} editable={editable} change={change} day={day} />
-      <MobileTrackerSection t={t} title={t("guest")} kind="guest" people={guests} records={records} editable={editable} change={change} day={day} />
-    </div>
-  </>;
+
+      {/* Desktop: full monthly grid */}
+      <div className="clean-desktop">
+        <CleanDesktopSection title={t("boarder")} kind="boarder" people={boarders} records={data.records} editable={manager} change={change} t={t} />
+        <CleanDesktopSection title={t("guest")} kind="guest" people={guests} records={data.records} editable={manager} change={change} t={t} />
+      </div>
+
+      {/* Mobile: date strip + one card per person for the selected day */}
+      <div className="clean-mobile">
+        <div className="mobile-date-nav">
+          <div className="mobile-day-top">
+            <div>
+              <small className="weekday-label">{weekdayLabel(day)}</small>
+              <b className="month-label">{monthLabel()}</b>
+            </div>
+            <span className="selected-day-chip">Day {day}</span>
+          </div>
+          <div className="date-strip" ref={dateStripRef}>
+            {dates.map((d) => (
+              <button
+                key={d}
+                ref={(el) => { dateButtonRefs.current[d] = el; }}
+                className={d === day ? "selected" : ""}
+                onClick={() => setDay(d)}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <MobileTrackerSection t={t} title={t("boarder")} kind="boarder" people={boarders} records={data.records} editable={manager} change={change} day={day} />
+        <MobileTrackerSection t={t} title={t("guest")} kind="guest" people={guests} records={data.records} editable={manager} change={change} day={day} />
+      </div>
+    </>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -483,8 +783,29 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout }) {
   const tabs = [["meals", Utensils, t("meals")], ["members", Users, t("members")], ["bazar", ShoppingBasket, t("bazar")], ["reports", Sparkles, t("reports")], ["settings", Settings, t("settings")]];
   return <main className="tracker">
     <header>
-      <div><span>🍲</span><b>{data.mess?.name}</b><small>{t("code")}: {data.mess?.inviteCode}</small></div>
-      <nav><Language lang={lang} setLang={setLang} light /><button onClick={logout}><LogOut size={16} />{t("logout")}</button></nav>
+      <div className="dashboard-brand">
+        <BrandMark className="dashboard-logo" />
+
+        <div>
+          <b>{data.mess?.name}</b>
+          <small>
+            {t("code")}: {data.mess?.inviteCode}
+          </small>
+        </div>
+      </div>
+
+      <nav>
+        <Language
+          lang={lang}
+          setLang={setLang}
+          light
+        />
+
+        <button onClick={logout}>
+          <LogOut size={16} />
+          {t("logout")}
+        </button>
+      </nav>
     </header>
     <div className="tabs">{tabs.map(([key, Icon, label]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><Icon size={17} /><span>{label}</span></button>)}</div>
     {tab === "meals" && <CurrentMealTracker t={t} data={data} messId={messId} user={user} />}

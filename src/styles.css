@@ -2142,3 +2142,687 @@ button:disabled {
         font-size: 14px;
     }
 }
+
+@media (max-width: 900px) {
+    .clean-desktop {
+        display: none !important;
+    }
+
+    .clean-mobile {
+        display: block !important;
+    }
+}
+
+@media (min-width: 901px) {
+    .clean-desktop {
+        display: block !important;
+    }
+
+    .clean-mobile {
+        display: none !important;
+    }
+}
+
+
+/* ===================================================================== */
+/* HARI VANGA PREMIUM IDENTITY + INDIA LIVE TIME                         */
+/* ===================================================================== */
+
+:root {
+    --hv-deep: #063f3d;
+    --hv-forest: #0b5b55;
+    --hv-green: #178d76;
+    --hv-mint: #75d8b5;
+    --hv-blue: #79b8ff;
+    --hv-purple: #9f8cff;
+    --hv-pink: #f5a6c2;
+    --hv-soft-pink: #ffeaf2;
+}
+
+body {
+    background:
+        radial-gradient(circle at 10% 10%, rgba(117, 216, 181, .14), transparent 26rem),
+        radial-gradient(circle at 92% 15%, rgba(121, 184, 255, .12), transparent 28rem),
+        radial-gradient(circle at 70% 70%, rgba(159, 140, 255, .09), transparent 30rem),
+        radial-gradient(circle at 20% 90%, rgba(245, 166, 194, .10), transparent 24rem),
+        var(--paper);
+}
+
+/* --------------------------------------------------------------------- */
+/* Logo                                                                  */
+/* --------------------------------------------------------------------- */
+
+.brand-mark {
+    object-fit: contain;
+    display: block;
+}
+
+.dashboard-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.dashboard-brand>div {
+    min-width: 0;
+}
+
+.dashboard-logo {
+    width: 48px;
+    height: 48px;
+    padding: 3px;
+    border-radius: 15px;
+    background: rgba(255, 255, 255, .96);
+    box-shadow:
+        0 10px 25px rgba(0, 0, 0, .18),
+        inset 0 0 0 1px rgba(255, 255, 255, .8);
+}
+
+.kicker-logo {
+    width: 23px;
+    height: 23px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .94);
+    padding: 2px;
+}
+
+.hero-brand-logo {
+    position: absolute;
+    width: 138px;
+    height: 138px;
+    right: 5px;
+    top: 14px;
+    object-fit: contain;
+    opacity: .14;
+    filter: brightness(0) invert(1);
+    pointer-events: none;
+}
+
+/* --------------------------------------------------------------------- */
+/* Premium hero                                                          */
+/* --------------------------------------------------------------------- */
+
+.tracker-hero {
+    isolation: isolate;
+    background:
+        radial-gradient(circle at 12% 100%, rgba(117, 216, 181, .22), transparent 18rem),
+        radial-gradient(circle at 82% 12%, rgba(121, 184, 255, .24), transparent 18rem),
+        radial-gradient(circle at 62% 80%, rgba(159, 140, 255, .15), transparent 20rem),
+        linear-gradient(135deg,
+            var(--hv-deep) 0%,
+            #09645c 42%,
+            #147d6b 72%,
+            #248d8b 100%);
+}
+
+.tracker-hero::before {
+    background:
+        linear-gradient(135deg,
+            rgba(255, 255, 255, .08),
+            rgba(255, 255, 255, .01));
+}
+
+.hero-orb {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    filter: blur(1px);
+    z-index: 0;
+}
+
+.hero-orb-one {
+    width: 190px;
+    height: 190px;
+    left: -80px;
+    top: -80px;
+    background: rgba(121, 184, 255, .14);
+}
+
+.hero-orb-two {
+    width: 240px;
+    height: 240px;
+    right: 15%;
+    bottom: -180px;
+    background: rgba(245, 166, 194, .10);
+}
+
+.hero-leaf {
+    position: absolute;
+    z-index: 1;
+    opacity: .7;
+    pointer-events: none;
+}
+
+.hero-leaf-one {
+    right: 30%;
+    top: 22px;
+    font-size: 28px;
+    transform: rotate(-25deg);
+}
+
+.hero-leaf-two {
+    right: 8%;
+    top: 24px;
+    color: #bcaeff;
+    font-size: 25px;
+}
+
+/* --------------------------------------------------------------------- */
+/* Live Indian clock — floating overlay, top-right of the hero           */
+/* --------------------------------------------------------------------- */
+
+.india-live-card {
+    position: absolute;
+    top: 22px;
+    right: 22px;
+    z-index: 3;
+    width: min(230px, 42%);
+    margin-top: 0;
+    padding: 13px 15px 14px;
+    border-radius: 19px;
+    overflow: hidden;
+
+    background:
+        linear-gradient(135deg,
+            rgba(255, 255, 255, .15),
+            rgba(117, 216, 181, .10));
+
+    border: 1px solid rgba(255, 255, 255, .18);
+
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .14),
+        0 14px 32px rgba(0, 0, 0, .11);
+
+    backdrop-filter: blur(18px);
+}
+
+.india-live-card::after {
+    content: "";
+    position: absolute;
+    width: 90px;
+    height: 90px;
+    right: -40px;
+    bottom: -45px;
+    border-radius: 50%;
+    background: rgba(159, 140, 255, .18);
+}
+
+.india-live-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    position: relative;
+    z-index: 1;
+}
+
+.india-live-pulse {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    letter-spacing: .12em;
+    font-weight: 900;
+    color: rgba(255, 255, 255, .74);
+}
+
+.india-live-pulse i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #76efbd;
+    box-shadow: 0 0 0 5px rgba(118, 239, 189, .12);
+    animation: indiaPulse 1.8s ease-in-out infinite;
+}
+
+.india-live-zone {
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .11);
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: .08em;
+}
+
+.india-live-card>strong {
+    display: block;
+    margin-top: 7px;
+    font-size: 25px;
+    letter-spacing: .02em;
+    position: relative;
+    z-index: 1;
+}
+
+.india-live-date {
+    margin-top: 5px;
+    display: grid;
+    gap: 2px;
+    position: relative;
+    z-index: 1;
+}
+
+.india-live-date span {
+    font-size: 11px;
+    color: rgba(255, 255, 255, .76);
+}
+
+.india-live-date b {
+    font-size: 12px;
+    color: #bff7df;
+}
+
+@keyframes indiaPulse {
+    50% {
+        transform: scale(.8);
+        opacity: .55;
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* Manager badge — floating overlay, lower-right of the hero             */
+/* --------------------------------------------------------------------- */
+
+.hero-manager {
+    position: absolute;
+    right: 24px;
+    bottom: 22px;
+    z-index: 3;
+    text-align: right;
+    color: #fff;
+    pointer-events: none;
+}
+
+.hero-manager span {
+    display: block;
+    font-size: 10px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    font-weight: 800;
+    color: rgba(255, 255, 255, .68);
+    margin-bottom: 4px;
+}
+
+.hero-manager strong {
+    display: inline-block;
+    font-size: 15px;
+    font-weight: 800;
+    padding: 6px 13px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .14);
+    border: 1px solid rgba(255, 255, 255, .18);
+    backdrop-filter: blur(10px);
+}
+
+/* --------------------------------------------------------------------- */
+/* Decorative rings inside the hero art                                  */
+/* --------------------------------------------------------------------- */
+
+.hero-art-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, .16);
+    pointer-events: none;
+}
+
+.hero-art-ring.ring-one {
+    width: 130px;
+    height: 130px;
+    right: 30px;
+    bottom: 6px;
+}
+
+.hero-art-ring.ring-two {
+    width: 78px;
+    height: 78px;
+    right: 92px;
+    bottom: 56px;
+    border-color: rgba(255, 216, 109, .35);
+}
+
+/* --------------------------------------------------------------------- */
+/* Header brand — logo + name/code stack (wins over the older grid rule) */
+/* --------------------------------------------------------------------- */
+
+.tracker>header>.dashboard-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.tracker>header>.dashboard-brand>div {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+
+.tracker>header>.dashboard-brand>div>b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------- */
+/* More colour richness                                                  */
+/* --------------------------------------------------------------------- */
+
+.tracker-stats div:nth-child(1) {
+    background:
+        linear-gradient(135deg,
+            rgba(117, 216, 181, .20),
+            rgba(255, 255, 255, .07));
+}
+
+.tracker-stats div:nth-child(2) {
+    background:
+        linear-gradient(135deg,
+            rgba(245, 166, 194, .20),
+            rgba(255, 255, 255, .07));
+}
+
+.tracker-stats div:nth-child(3) {
+    background:
+        linear-gradient(135deg,
+            rgba(121, 184, 255, .20),
+            rgba(159, 140, 255, .12));
+}
+
+.mobile-date-nav {
+    position: relative;
+    overflow: hidden;
+}
+
+.mobile-date-nav::after {
+    content: "";
+    position: absolute;
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    right: -75px;
+    top: -80px;
+    background: radial-gradient(circle,
+            rgba(121, 184, 255, .16),
+            transparent 68%);
+    pointer-events: none;
+}
+
+.mobile-tracker-section.boarder .mobile-section-title h2 {
+    background:
+        linear-gradient(90deg,
+            var(--hv-deep),
+            #168b75);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.mobile-tracker-section.guest .mobile-section-title h2 {
+    background:
+        linear-gradient(90deg,
+            #b25370,
+            #9a6fd3,
+            #6f91d9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.mobile-tracker-section article {
+    position: relative;
+    overflow: hidden;
+}
+
+.mobile-tracker-section.boarder article::after {
+    content: "";
+    position: absolute;
+    width: 110px;
+    height: 110px;
+    right: -65px;
+    bottom: -70px;
+    border-radius: 50%;
+    background: rgba(117, 216, 181, .08);
+    pointer-events: none;
+}
+
+.mobile-tracker-section.guest article::after {
+    content: "";
+    position: absolute;
+    width: 120px;
+    height: 120px;
+    right: -75px;
+    bottom: -75px;
+    border-radius: 50%;
+    background: rgba(159, 140, 255, .08);
+    pointer-events: none;
+}
+
+/* --------------------------------------------------------------------- */
+/* Guest popup — HARD MOBILE OVERFLOW FIX                                */
+/* --------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+
+    .guest-control {
+        position: static !important;
+        min-width: 0 !important;
+    }
+
+    .mobile-period {
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .period-label {
+        min-width: 0 !important;
+        overflow: hidden;
+    }
+
+    .period-label>div {
+        min-width: 0;
+    }
+
+    .period-label b,
+    .period-label small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .period-control {
+        width: auto !important;
+        flex: 0 0 96px;
+    }
+
+    .mobile-period .meal,
+    .mobile-period .guest-control,
+    .mobile-period .guest-main {
+        width: 96px !important;
+        max-width: 96px !important;
+    }
+
+    .food-picker,
+    .mobile-period .food-picker,
+    .mobile-period .guest-stepper {
+        position: fixed !important;
+
+        left: 50% !important;
+        top: 50% !important;
+
+        width: calc(100vw - 24px) !important;
+        max-width: 340px !important;
+
+        max-height: calc(100dvh - 28px);
+
+        margin: 0 !important;
+
+        transform: translate(-50%, -50%) !important;
+
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+
+        box-sizing: border-box !important;
+
+        grid-template-columns: minmax(0, 1fr) !important;
+
+        z-index: 9999 !important;
+    }
+
+    .guest-stepper {
+        padding: 16px !important;
+        border-radius: 22px !important;
+    }
+
+    .guest-stepper .picker-title,
+    .guest-stepper .food-step,
+    .guest-stepper .done-choice {
+        width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    .food-step {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) auto !important;
+        align-items: center !important;
+        gap: 8px !important;
+    }
+
+    .food-label {
+        min-width: 0 !important;
+        overflow: hidden;
+    }
+
+    .food-label b {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .quantity-stepper {
+        flex: 0 0 auto;
+        gap: 6px !important;
+    }
+
+    .quantity-stepper button {
+        flex: 0 0 34px;
+    }
+
+    .mobile-person-heading {
+        min-width: 0 !important;
+    }
+
+    .mobile-person-heading>div:first-child {
+        min-width: 0 !important;
+        flex: 1 1 auto;
+    }
+
+    .mobile-person-heading .total-plate.guest {
+        min-width: 112px !important;
+        max-width: 112px !important;
+        flex: 0 0 112px;
+    }
+
+    .plate-breakdown {
+        gap: 3px !important;
+    }
+
+    .plate-breakdown span {
+        font-size: 10px !important;
+    }
+
+    .tracker-hero {
+        min-height: 0 !important;
+    }
+
+    .india-live-card {
+        top: 16px;
+        right: 16px;
+        width: min(178px, 42vw);
+        padding: 10px 11px 11px;
+        border-radius: 16px;
+    }
+
+    .india-live-card>strong {
+        font-size: 16px;
+        margin-top: 5px;
+    }
+
+    .india-live-top {
+        gap: 4px;
+    }
+
+    .india-live-pulse,
+    .india-live-zone {
+        font-size: 7.5px;
+    }
+
+    .india-live-date span {
+        font-size: 9px;
+    }
+
+    .india-live-date b {
+        font-size: 10px;
+    }
+
+    .hero-manager {
+        right: 20px;
+        bottom: 16px;
+    }
+
+    .hero-manager span {
+        font-size: 9px;
+    }
+
+    .hero-manager strong {
+        font-size: 12px;
+        padding: 5px 10px;
+    }
+
+    .hero-art-ring {
+        display: none;
+    }
+
+    .hero-brand-logo {
+        width: 112px;
+        height: 112px;
+        right: -4px;
+        top: 24px;
+    }
+}
+
+@media (max-width: 380px) {
+
+    .period-control {
+        flex-basis: 88px;
+    }
+
+    .mobile-period .meal,
+    .mobile-period .guest-control,
+    .mobile-period .guest-main {
+        width: 88px !important;
+        max-width: 88px !important;
+    }
+
+    .period-icon {
+        width: 36px !important;
+        height: 36px !important;
+    }
+
+    .period-label {
+        gap: 7px !important;
+    }
+
+    .india-live-card {
+        width: min(150px, 46vw);
+        padding: 9px 10px 10px;
+    }
+
+    .india-live-card>strong {
+        font-size: 14px;
+    }
+
+    .hero-manager strong {
+        font-size: 11px;
+        padding: 4px 9px;
+    }
+}
