@@ -183,35 +183,122 @@ function Landing({ t, lang, setLang, go }) {
   const chats = lang === "bn"
     ? [["রাহুল", "কাল থেকে meal off 🙏"], ["সুমন", "দাদা আজ রাতে খাব না"], ["অরিজিৎ", "আমি ৭ দিন বাড়ি আছি"], ["গোপাল", "কাল সকালে ডিম ভাত রাখিস"]]
     : [["Rahul", "Meal off from tomorrow 🙏"], ["Suman", "Bro, I'm not eating tonight"], ["Arijit", "I'm home for 7 days"], ["Gopal", "Keep egg rice tomorrow"]];
+
   const pillars = lang === "bn"
-    ? [["🍚", "Boarder meal", "সকাল-রাত টগল করো, টোটাল নিজেই যোগ হবে"], ["🍛", "Guest meal", "Veg, Egg, Fish, Meat — সব হিসাব এক জায়গায়"], ["🧺", "বাজার খরচ", "কে কত টাকা দিল, কী কেনা হলো — সব লেখা থাকবে"]]
-    : [["🍚", "Boarder meals", "Toggle morning & night — totals add themselves"], ["🍛", "Guest meals", "Veg, egg, fish, meat, all tracked in one place"], ["🧺", "Bazar spends", "Every rupee and every item, always on record"]];
+    ? [
+      ["🍚", "Boarder meal", "সকাল-রাত টগল করো, টোটাল নিজেই যোগ হবে"],
+      ["🍛", "Guest meal", "Veg, Egg, Fish, Meat — সব হিসাব এক জায়গায়"],
+      ["🧺", "বাজার খরচ", "কে কত টাকা দিল, কী কেনা হলো — সব লেখা থাকবে"]
+    ]
+    : [
+      ["🍚", "Boarder meals", "Toggle morning & night — totals add themselves"],
+      ["🍛", "Guest meals", "Veg, egg, fish, meat, all tracked in one place"],
+      ["🧺", "Bazar spends", "Every rupee and every item, always on record"]
+    ];
+
   return (
     <main className="landing">
-      <section className="hero">
+
+      <section className="premium-hero">
+
+        <div className="hero-glow one"></div>
+        <div className="hero-glow two"></div>
+
         <Language lang={lang} setLang={setLang} light />
-        <i className="blob blue" /><i className="blob coral" />
-        <span className="sticker rice">🍚</span><span className="sticker chilli">🌶️</span>
-        <div className="eyebrow"><Sparkles size={15} />{t("badge")}</div>
-        <h1>{t("brand")}</h1>
-        <p className="strap">{t("strap")}</p>
-        <p className="hero-copy">{t("hero")}</p>
-        <button className="cta coral-cta" onClick={go}>{t("start")}<ArrowRight /></button>
+
+        <div className="hero-floating rice">🍚</div>
+        <div className="hero-floating chilli">🌶️</div>
+        <div className="hero-floating bowl">🍲</div>
+
+
+        <div className="hero-content">
+
+          <div className="eyebrow">
+            <Sparkles size={15} />
+            {t("badge")}
+          </div>
+
+
+          <h1>
+            {t("brand")}
+          </h1>
+
+
+          <h2>
+            {t("strap")}
+          </h2>
+
+
+          <p>
+            {t("hero")}
+          </p>
+
+
+          <button className="premium-start" onClick={go}>
+            {t("start")}
+            <ArrowRight />
+          </button>
+
+        </div>
+
+
       </section>
-      <section className="pillars">
-        {pillars.map(([icon, title, desc]) => <article key={title}><span>{icon}</span><b>{title}</b><p>{desc}</p></article>)}
+
+
+
+      <section className="pillars premium-pillars">
+
+        {pillars.map(([icon, title, desc]) => (
+          <article key={title}>
+            <span>{icon}</span>
+            <b>{title}</b>
+            <p>{desc}</p>
+          </article>
+        ))}
+
       </section>
+
+
+
       <section className="story">
+
         <h2>{t("nightmare")}</h2>
+
         <p>{t("familiar")}</p>
-        <div className="chat-stack">{chats.map(([name, message], i) => <div className={`chat ${i % 2 ? "right" : ""}`} key={name}><b>{name}</b><span>{message}</span><small>11:5{i} PM ✓✓</small></div>)}</div>
-        <div className="story-punch">{t("storyEnd")} 🫠</div>
+
+
+        <div className="chat-stack">
+          {chats.map(([name, message], i) => (
+            <div className={`chat ${i % 2 ? "right" : ""}`} key={name}>
+              <b>{name}</b>
+              <span>{message}</span>
+              <small>11:5{i} PM ✓✓</small>
+            </div>
+          ))}
+        </div>
+
+
+        <div className="story-punch">
+          {t("storyEnd")} 🫠
+        </div>
+
+
       </section>
+
+
+
       <section className="final-cta">
         <span>🍲</span>
         <h2>{t("digital")}</h2>
-        <button className="cta full-cta" onClick={go}>{t("start")}<ArrowRight /></button>
+
+        <button className="cta full-cta" onClick={go}>
+          {t("start")}
+          <ArrowRight />
+        </button>
+
       </section>
+
+
     </main>
   );
 }
