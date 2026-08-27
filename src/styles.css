@@ -53,6 +53,12 @@ button:disabled {
     opacity: .55
 }
 
+.clean-table .meal:disabled,
+.clean-mobile .meal:disabled {
+    cursor: default;
+    opacity: 1
+}
+
 /* ---------- dashboard shell ---------- */
 .tracker {
     min-height: 100vh;
@@ -1051,6 +1057,70 @@ button:disabled {
     box-shadow: 0 0 0 4px rgba(46, 183, 165, .12)
 }
 
+.manager-transfer-card {
+    border: 1px solid rgba(18, 90, 84, .14);
+    background: linear-gradient(135deg, rgba(255, 255, 255, .96), rgba(235, 249, 246, .88));
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 18px;
+    box-shadow: 0 18px 42px rgba(16, 65, 62, .08)
+}
+
+.manager-transfer-card label {
+    display: block;
+    font-size: 12px;
+    font-weight: 900;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 10px
+}
+
+.manager-transfer-controls {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) auto;
+    gap: 10px;
+    align-items: center
+}
+
+.manager-transfer-controls select {
+    width: 100%;
+    border: 1px solid #d7e2df;
+    background: #fff;
+    border-radius: 14px;
+    padding: 13px 14px;
+    color: var(--ink);
+    font-weight: 800;
+    outline: none
+}
+
+.manager-transfer-controls select:focus {
+    border-color: #65b8aa;
+    box-shadow: 0 0 0 4px rgba(46, 183, 165, .12)
+}
+
+.success-modal-body {
+    display: grid;
+    gap: 14px;
+    justify-items: center;
+    text-align: center
+}
+
+.success-modal-body svg {
+    color: #159b83;
+    background: rgba(21, 155, 131, .12);
+    border-radius: 999px;
+    padding: 8px;
+    width: 52px;
+    height: 52px
+}
+
+.success-modal-body p {
+    margin: 0 0 8px;
+    color: var(--ink);
+    font-weight: 800
+}
+
 .cta,
 .secondary,
 .danger,
@@ -1172,6 +1242,10 @@ button:disabled {
 
     .inline-form .cta {
         width: 100%
+    }
+
+    .manager-transfer-controls {
+        grid-template-columns: 1fr
     }
 }
 
@@ -2825,4 +2899,203 @@ body {
         font-size: 11px;
         padding: 4px 9px;
     }
+}
+
+/* ================================
+   IMPORTANT NOTES PANEL
+================================ */
+
+
+.notes-panel {
+    max-width: 980px;
+}
+
+
+.notes-toolbar {
+
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    margin-bottom: 14px;
+
+}
+
+
+.notes-toolbar button {
+
+    width: 42px;
+    height: 42px;
+
+    border-radius: 12px;
+
+    border: 1px solid var(--line);
+
+    background: #f5f8f7;
+
+    color: var(--teal);
+
+    font-size: 18px;
+
+}
+
+
+.notes-toolbar button.active {
+
+    background: #dff2ec;
+
+}
+
+
+.notes-toolbar input[type="color"] {
+
+    width: 42px;
+    height: 42px;
+
+    border: none;
+
+    padding: 0;
+
+    border-radius: 12px;
+
+}
+
+
+.notes-area {
+
+    width: 100%;
+
+    min-height: 260px;
+
+    resize: vertical;
+
+    border-radius: 22px;
+
+    border: 1px solid #dbe6e2;
+
+    background:
+
+        linear-gradient(145deg,
+            #ffffff,
+            #f8fcfa);
+
+    padding: 22px;
+
+    font-size: 18px;
+
+    line-height: 1.7;
+
+    outline: none;
+
+}
+
+
+.notes-area:focus {
+
+    border-color: #5db9aa;
+
+    box-shadow:
+        0 0 0 5px rgba(46, 183, 165, .12);
+
+}
+
+
+.notes-save {
+
+    margin-top: 15px;
+
+}
+
+
+
+/* MOBILE */
+
+@media(max-width:760px) {
+
+
+    .notes-panel {
+
+        margin: 18px 14px;
+
+        padding: 18px;
+
+    }
+
+
+    .notes-area {
+
+        min-height: 220px;
+
+        font-size: 16px;
+
+        padding: 18px;
+
+        border-radius: 18px;
+
+    }
+
+
+    .notes-toolbar {
+
+        justify-content: flex-start;
+
+    }
+
+
+    .notes-save {
+
+        width: 100%;
+
+    }
+
+
+}
+
+.notes-success {
+
+    margin-top: 14px;
+
+    padding: 12px 18px;
+
+    border-radius: 16px;
+
+    background: linear-gradient(135deg,
+            #dff8ef,
+            #ecfff8);
+
+    color: #0d5c58;
+
+    font-weight: 700;
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 8px;
+
+    animation: notePop .35s ease;
+
+}
+
+
+
+@keyframes notePop {
+
+    from {
+
+        opacity: 0;
+
+        transform: translateY(8px);
+
+    }
+
+
+    to {
+
+        opacity: 1;
+
+        transform: translateY(0);
+
+    }
+
 }

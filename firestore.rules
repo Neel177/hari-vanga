@@ -1,50 +1,303 @@
 rules_version = '2';
+
 service cloud.firestore {
+
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function member(messId) { return signedIn() && exists(/databases/$(database)/documents/messes/$(messId)/members/$(request.auth.uid)); }
-    function manager(messId) { return member(messId) && get(/databases/$(database)/documents/messes/$(messId)/members/$(request.auth.uid)).data.role == 'manager'; }
+
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+
+    function member(messId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/messes/$(messId)/members/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/messes/$(messId)/members/$(request.auth.uid)).data.active != false;
+    }
+
+
+    function manager(messId) {
+      return member(messId) &&
+        get(/databases/$(database)/documents/messes/$(messId)/members/$(request.auth.uid)).data.role == 'manager';
+    }
+
+
 
     match /users/{userId} {
-      allow read, create, update: if signedIn() && request.auth.uid == userId;
+
+      allow read, create, update:
+        if signedIn() && request.auth.uid == userId;
+
     }
 
-    // Invite codes are high-entropy document IDs. Authenticated users may only
-    // get a specific code; listing every invite is never allowed.
+
+
+
     match /invites/{inviteCode} {
-      allow get: if signedIn();
-      allow create: if manager(request.resource.data.messId) ||
-        (signedIn() && request.resource.data.createdBy == request.auth.uid &&
-         getAfter(/databases/$(database)/documents/messes/$(request.resource.data.messId)).data.createdBy == request.auth.uid);
-      allow delete: if manager(resource.data.messId);
+
+
+      allow get:
+        if signedIn();
+
+
+
+      allow create:
+        if manager(request.resource.data.messId)
+        ||
+        (
+          signedIn() &&
+          request.resource.data.createdBy == request.auth.uid &&
+          getAfter(
+            /databases/$(database)/documents/messes/$(request.resource.data.messId)
+          ).data.createdBy == request.auth.uid
+        );
+
+
+
+      allow delete:
+        if manager(resource.data.messId);
+
     }
+
+
+
+
 
     match /messes/{messId} {
-      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
-      allow read: if member(messId);
-      allow update: if manager(messId);
+
+
+      allow create:
+        if signedIn() &&
+        request.resource.data.createdBy == request.auth.uid;
+
+
+
+      allow read:
+        if member(messId);
+
+
+
+      allow update:
+        if manager(messId);
+
+
+
+
 
       match /members/{userId} {
-        // Reading one's own membership permits legacy-profile restoration.
-        allow read: if member(messId) || (signedIn() && request.auth.uid == userId);
-        // Founder can atomically create their manager membership. A normal
-        // authenticated user can only create their own member record and must
-        // present a live invite document tied to this mess.
-        allow create: if manager(messId) ||
-          (signedIn() && request.auth.uid == userId &&
-           ((request.resource.data.role == 'manager' && getAfter(/databases/$(database)/documents/messes/$(messId)).data.createdBy == request.auth.uid) ||
-            (request.resource.data.role == 'member' && get(/databases/$(database)/documents/invites/$(request.resource.data.joinedWithCode)).data.messId == messId)));
-        allow update, delete: if manager(messId);
+
+
+
+        allow read:
+          if member(messId)
+          ||
+          (
+            signedIn() &&
+            request.auth.uid == userId
+          );
+
+
+
+
+
+        // JOIN CREATE
+        allow create:
+          if manager(messId)
+          ||
+          (
+            signedIn()
+            &&
+            request.auth.uid == userId
+            &&
+            request.resource.data.role == "member"
+            &&
+            get(
+              /databases/$(database)/documents/invites/$(request.resource.data.joinedWithCode)
+            ).data.messId == messId
+          );
+
+
+
+
+
+
+
+        // MEMBER SELF UPDATE ONLY FOR LEAVE / REJOIN
+        allow update:
+          if manager(messId)
+          ||
+          (
+            signedIn()
+            &&
+            request.auth.uid == userId
+            &&
+            
+            // role change completely blocked
+            request.resource.data.role == resource.data.role
+            &&
+
+            request.resource.data.diff(resource.data)
+            .changedKeys()
+            .hasOnly([
+              "active",
+              "leftAt",
+              "updatedAt",
+              "joinedWithCode",
+              "joinedAt",
+              "displayName",
+              "email",
+              "photoURL",
+              "linkedUserId",
+              "uid"
+            ])
+          );
+
+
+
+
+
+
+        allow delete:
+          if manager(messId);
+
+
       }
 
-      match /people/{personId} { allow read: if member(messId); allow write: if manager(messId); }
-      match /months/{monthId} {
-        allow read: if member(messId); allow create, update, delete: if manager(messId);
-        match /memberStatuses/{memberId} { allow read: if member(messId); allow write: if manager(messId); }
-        match /mealRecords/{recordId} { allow read: if member(messId); allow write: if manager(messId); }
-        match /guestMeals/{guestMealId} { allow read: if member(messId); allow write: if manager(messId); }
+
+
+
+
+
+      match /people/{personId} {
+
+
+        allow read:
+          if member(messId);
+
+
+
+        allow write:
+          if manager(messId);
+
       }
-      match /expenses/{expenseId} { allow read: if member(messId); allow write: if manager(messId); }
+
+
+
+
+
+
+
+      match /months/{monthId} {
+
+
+        allow read:
+          if member(messId);
+
+
+
+        allow create, update, delete:
+          if manager(messId);
+
+
+
+
+
+        match /memberStatuses/{memberId} {
+
+
+          allow read:
+            if member(messId);
+
+
+
+          allow write:
+            if manager(messId);
+
+        }
+
+
+
+
+
+
+        match /mealRecords/{recordId} {
+
+
+          allow read:
+            if member(messId);
+
+
+
+          allow write:
+            if manager(messId);
+
+        }
+
+
+
+
+
+
+        match /guestMeals/{guestMealId} {
+
+
+          allow read:
+            if member(messId);
+
+
+
+          allow write:
+            if manager(messId);
+
+        }
+
+
+      }
+
+
+
+
+
+
+      match /expenses/{expenseId} {
+
+
+        allow read:
+          if member(messId);
+
+
+
+        allow write:
+          if manager(messId);
+
+      }
+
+
+
+
+
+
+
+
+      // NOTES
+
+      match /notes/{noteId} {
+
+
+        allow read:
+          if member(messId);
+
+
+
+        allow write:
+          if manager(messId);
+
+      }
+
+
+
     }
-  }
+
+}
 }

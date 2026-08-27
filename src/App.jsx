@@ -244,7 +244,7 @@ function Create({ t, user, back, onDone }) {
       const content = writeBatch(db);
       people.filter((p) => p.trim()).forEach((person) => content.set(doc(mess, "people", createId()), { name: person.trim(), active: true, createdAt: serverTimestamp() }));
       content.set(doc(mess, "months", monthKey()), { managerId: user.uid, minimumBoarderMeals: 40, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      content.set(doc(db, "users", user.uid), { currentMessId: mess.id, role: "manager", updatedAt: serverTimestamp() }, { merge: true });
+      content.set(doc(db, "users", user.uid), { activeMessId: mess.id, currentMessId: mess.id, role: "manager", updatedAt: serverTimestamp() }, { merge: true });
       await content.commit();
       onDone(mess.id, "setup");
     } catch (e) { console.error("createMess", e); setError(e.message); setBusy(false); }
@@ -259,29 +259,177 @@ function Create({ t, user, back, onDone }) {
   </div></Screen>;
 }
 function Join({ t, user, back, onDone }) {
-  const [code, setCode] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
   const join = async () => {
-    setBusy(true); setError("");
+    setBusy(true);
+    setError("");
+
     try {
       const typedCode = code.trim().toUpperCase();
+
       const messId = await runTransaction(db, async (tx) => {
-        const invite = await tx.get(doc(db, "invites", typedCode));
-        if (!invite.exists()) throw new Error("invalid-code");
-        const foundMessId = invite.data().messId, membership = doc(db, "messes", foundMessId, "members", user.uid), profile = doc(db, "users", user.uid);
-        const [mess, member] = await Promise.all([tx.get(doc(db, "messes", foundMessId)), tx.get(membership)]);
-        if (!mess.exists()) throw new Error("invalid-code");
-        tx.set(profile, { uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL, currentMessId: foundMessId, role: member.exists() ? member.data().role : "member", updatedAt: serverTimestamp() }, { merge: true });
-        if (!member.exists()) tx.set(membership, { uid: user.uid, linkedUserId: user.uid, displayName: user.displayName || "Member", role: "member", active: true, joinedWithCode: typedCode, joinedAt: serverTimestamp() });
+
+        const inviteRef = doc(db, "invites", typedCode);
+        const invite = await tx.get(inviteRef);
+
+        if (!invite.exists()) {
+          throw new Error("invalid-code");
+        }
+
+
+        const foundMessId = invite.data().messId;
+
+        if (!foundMessId) {
+          throw new Error("invalid-code");
+        }
+
+
+        const membership = doc(
+          db,
+          "messes",
+          foundMessId,
+          "members",
+          user.uid
+        );
+
+
+        const profile = doc(
+          db,
+          "users",
+          user.uid
+        );
+
+
+
+        // user profile update
+        tx.set(
+          profile,
+          {
+            uid: user.uid,
+            displayName: user.displayName || "Member",
+            email: user.email || "",
+            photoURL: user.photoURL || "",
+            activeMessId: foundMessId,
+            currentMessId: foundMessId,
+            updatedAt: serverTimestamp()
+          },
+          {
+            merge: true
+          }
+        );
+
+
+
+        // always join as member
+        tx.set(
+          membership,
+          {
+            uid: user.uid,
+            linkedUserId: user.uid,
+            displayName: user.displayName || "Member",
+            email: user.email || "",
+            photoURL: user.photoURL || "",
+
+            role: "member",
+
+            active: true,
+
+            joinedWithCode: typedCode,
+
+            joinedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          },
+          {
+            merge: true
+          }
+        );
+
+
         return foundMessId;
+
       });
+
+
       onDone(messId, "tracker");
-    } catch (e) { console.error("joinMessFirestore", e); setError(e.message === "invalid-code" ? t("invalidCode") : `${t("error")} ${e.message || ""}`); setBusy(false); }
+
+
+    } catch (e) {
+
+      console.error("joinMessFirestore", e);
+
+      setError(
+        e.message === "invalid-code"
+          ? t("invalidCode")
+          : `${t("error")} ${e.message || ""}`
+      );
+
+    } finally {
+
+      setBusy(false);
+
+    }
   };
-  return <Screen><div className="auth-card"><Back label={t("back")} onClick={back} /><div className="pot">🧑‍🍳</div><h2>{t("joinTitle")}</h2><p>{t("joinHint")}</p>
-    <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="X7QP2A" />
-    <button className="cta full" disabled={!code || busy} onClick={join}>{busy ? t("loading") : t("joinNow")}<ArrowRight /></button>
-    {error && <p className="error">{error}</p>}
-  </div></Screen>;
+
+
+  return (
+    <Screen>
+
+      <div className="auth-card">
+
+        <Back
+          label={t("back")}
+          onClick={back}
+        />
+
+        <div className="pot">
+          🧑‍🍳
+        </div>
+
+
+        <h2>
+          {t("joinTitle")}
+        </h2>
+
+
+        <p>
+          {t("joinHint")}
+        </p>
+
+
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="X7QP2A"
+        />
+
+
+        <button
+          className="cta full"
+          disabled={!code || busy}
+          onClick={join}
+        >
+
+          {busy ? t("loading") : t("joinNow")}
+
+          <ArrowRight />
+
+        </button>
+
+
+        {error &&
+          <p className="error">
+            {error}
+          </p>
+        }
+
+
+      </div>
+
+    </Screen>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -298,12 +446,14 @@ function useMess(messId) {
     }, (error) => { console.error(`Firestore ${key}`, error); if (alive) setState((s) => ({ ...s, error: error.message, loading: false })); });
     const stops = [
       observe(doc(db, root), "mess"),
+      observe(collection(db, root, "members"), "members", true),
       observe(collection(db, root, "people"), "people", true),
       observe(doc(db, root, "months", month), "month"),
       observe(collection(db, root, "months", month, "memberStatuses"), "statuses", true),
       observe(collection(db, root, "months", month, "mealRecords"), "records", true),
       observe(collection(db, root, "months", month, "guestMeals"), "legacyGuestMeals", true),
       observe(collection(db, root, "expenses"), "expenses", true),
+      observe(collection(db, root, "notes"), "notes", true),
     ];
     return () => { alive = false; stops.forEach((stop) => stop()); };
   }, [messId]);
@@ -449,7 +599,7 @@ function TrackerHero({
 
   const indiaDate = new Intl.DateTimeFormat(undefined, {
     timeZone: INDIA_TIME_ZONE,
-    weekday: "short",
+    weekday: "long",
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -479,32 +629,17 @@ function TrackerHero({
       <div className="hero-leaf hero-leaf-one">🍃</div>
       <div className="hero-leaf hero-leaf-two">✦</div>
 
-      {/* Live India time — independent overlay, does not increase hero height */}
-      <div className="india-live-card">
-        <div className="india-live-top">
-          <span className="india-live-pulse">
-            <i />
-            LIVE INDIA
-          </span>
 
-          <span className="india-live-zone">
-            🇮🇳 IST
-          </span>
-        </div>
-
-        <strong>{indiaTime}</strong>
-
-        <div className="india-live-date">
-          <span>{indiaDate}</span>
-          <b>{indiaMonth}</b>
-        </div>
-      </div>
 
       <div className="tracker-hero-copy">
         <div className="tracker-kicker">
           <BrandMark className="kicker-logo" />
-          <span>{indiaMonth}</span>
+
+          <span> {indiaDate}</span>
+
         </div>
+
+
 
         <h1>Meal tracker, made simple.</h1>
 
@@ -533,7 +668,7 @@ function TrackerHero({
 
       {/* Manager — lower right */}
       <div className="hero-manager">
-        <span>Manager</span>
+        <span>{t("manager")}</span>
         <strong>{managerName}</strong>
       </div>
 
@@ -598,7 +733,7 @@ function CurrentMealTracker({ t, data, messId, user }) {
     return () => cancelAnimationFrame(frame);
   }, [day]);
 
-  const manager = data.month?.managerId === user.uid;
+  const manager = data.members?.[user.uid]?.role === "manager";
   const people = Object.values(data.people || {}).filter((p) => p.active !== false);
   const boarders = people.filter((p) => data.statuses?.[p.id]?.type !== "guest");
   const guests = people.filter((p) => data.statuses?.[p.id]?.type === "guest");
@@ -663,29 +798,313 @@ function CurrentMealTracker({ t, data, messId, user }) {
 function Modal({ title, children, close }) { return <div className="modal-bg" onClick={close}><div className="modal" onClick={(e) => e.stopPropagation()}><button className="close" onClick={close}><X /></button><h2>{title}</h2>{children}</div></div>; }
 
 function Members({ t, messId, data, manager }) {
-  const [name, setName] = useState(""), [editing, setEditing] = useState(null), [removing, setRemoving] = useState(null);
-  const people = Object.values(data.people || {}).filter((p) => p.active !== false);
-  const boarders = people.filter((p) => data.statuses?.[p.id]?.type !== "guest");
-  const add = async () => { if (!name.trim()) return; await setDoc(doc(db, "messes", messId, "people", createId()), { name: name.trim(), active: true, createdAt: serverTimestamp() }); setName(""); };
-  return <section className="panel boarder-panel">
-    <div className="section-title"><div><span>👥</span><h2>{t("boarder")}</h2><p>{boarders.length} {t("activeMembers")}</p></div></div>
-    {manager && <div className="inline-form"><input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("personPlaceholder")} /><button className="cta" onClick={add}><Plus />{t("addMember")}</button></div>}
-    <div className="member-list">{boarders.map((person) => <article key={person.id}>
-      <div className="avatar">{person.name.slice(0, 1)}</div>
-      <div><b>{person.name}</b><small>{t("boarder")}</small></div>
-      {manager && <div className="member-actions"><button onClick={() => setEditing(person)}><Pencil size={16} /></button><button onClick={() => setRemoving(person)}><Trash2 size={16} /></button></div>}
-    </article>)}
-      {!boarders.length && <div className="tracker-empty">No boarders yet.</div>}
-    </div>
-    {editing && <Modal title={t("edit")} close={() => setEditing(null)}>
-      <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-      <button className="cta full" onClick={async () => { await updateDoc(doc(db, "messes", messId, "people", editing.id), { name: editing.name.trim(), updatedAt: serverTimestamp() }); setEditing(null); }}>{t("save")}</button>
-    </Modal>}
-    {removing && <Modal title={t("remove")} close={() => setRemoving(null)}>
-      <p>{t("removeWarning")}</p>
-      <button className="danger full" onClick={async () => { await updateDoc(doc(db, "messes", messId, "people", removing.id), { active: false, removedAt: serverTimestamp() }); setRemoving(null); }}>{t("confirm")}</button>
-    </Modal>}
-  </section>;
+  const [name, setName] = useState("");
+  const [selectedManagerId, setSelectedManagerId] = useState("");
+  const [managerSuccess, setManagerSuccess] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [removing, setRemoving] = useState(null);
+
+  const people = Object.values(data.people || {}).filter(
+    (p) => p.active !== false
+  );
+
+  const joinedMembers = Object.values(data.members || {}).filter(
+    (member) => member.active !== false
+  );
+
+  const currentManagerId = data.mess?.currentManagerId;
+  const currentManager =
+    data.members?.[currentManagerId] ||
+    joinedMembers.find((member) => member.role === "manager");
+  const managerOptions = joinedMembers.filter(
+    (member) => member.uid !== currentManager?.uid && member.id !== currentManager?.id
+  );
+
+  const boarders = people.filter(
+    (p) => data.statuses?.[p.id]?.type !== "guest"
+  );
+
+  const add = async () => {
+    if (!name.trim()) return;
+
+    await setDoc(
+      doc(db, "messes", messId, "people", createId()),
+      {
+        name: name.trim(),
+        active: true,
+        createdAt: serverTimestamp(),
+      }
+    );
+
+    setName("");
+  };
+
+  const transferManager = async () => {
+    if (!selectedManagerId) return;
+
+    const nextManager = data.members?.[selectedManagerId];
+    if (!nextManager) return;
+
+    await runTransaction(db, async (tx) => {
+      const messRef = doc(db, "messes", messId);
+      const messSnap = await tx.get(messRef);
+      if (!messSnap.exists()) throw new Error("missing-mess");
+
+      const oldManagerId =
+        messSnap.data().currentManagerId ||
+        currentManager?.uid ||
+        currentManager?.id;
+
+      const oldManagerRef = oldManagerId
+        ? doc(db, "messes", messId, "members", oldManagerId)
+        : null;
+      const nextManagerRef = doc(db, "messes", messId, "members", selectedManagerId);
+      const nextManagerSnap = await tx.get(nextManagerRef);
+
+      if (!nextManagerSnap.exists()) throw new Error("missing-member");
+      if (oldManagerRef) tx.update(oldManagerRef, { role: "member", updatedAt: serverTimestamp() });
+      tx.update(nextManagerRef, { role: "manager", active: true, updatedAt: serverTimestamp() });
+      tx.update(messRef, { currentManagerId: selectedManagerId, managerName: nextManager.displayName || nextManager.email || "Manager", updatedAt: serverTimestamp() });
+    });
+
+    setSelectedManagerId("");
+    setManagerSuccess(true);
+  };
+
+  return (
+    <section className="panel boarder-panel">
+
+      {/* Manager edit section */}
+      {manager && (
+        <div className="manager-edit-box">
+
+          <div className="section-title">
+            <div>
+              <span>👑</span>
+              <h2>{t("manager")}</h2>
+              <p>{t("currentManager")}: {currentManager?.displayName || currentManager?.email || data.mess?.managerName || t("manager")}</p>
+            </div>
+          </div>
+
+
+          <div className="manager-transfer-card">
+            <label htmlFor="manager-transfer">{t("changeManager")}</label>
+            <div className="manager-transfer-controls">
+              <select
+                id="manager-transfer"
+                value={selectedManagerId}
+                onChange={(e) => setSelectedManagerId(e.target.value)}
+              >
+                <option value="">{t("selectMember")}</option>
+                {managerOptions.map((member) => (
+                  <option key={member.uid || member.id} value={member.uid || member.id}>
+                    {member.displayName || member.email || t("member")}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                className="cta"
+                disabled={!selectedManagerId}
+                onClick={transferManager}
+              >
+                {t("makeManager")}
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+
+
+      <div className="section-title">
+        <div>
+          <span>👥</span>
+          <h2>{t("boarder")}</h2>
+          <p>
+            {boarders.length} {t("activeMembers")}
+          </p>
+        </div>
+      </div>
+
+
+      {manager && (
+        <div className="inline-form">
+
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("personPlaceholder")}
+          />
+
+          <button
+            className="cta"
+            onClick={add}
+          >
+            <Plus />
+            {t("addMember")}
+          </button>
+
+        </div>
+      )}
+
+
+
+      <div className="member-list">
+
+        {boarders.map((person) => (
+
+          <article key={person.id}>
+
+            <div className="avatar">
+              {person.name.slice(0, 1)}
+            </div>
+
+            <div>
+              <b>{person.name}</b>
+              <small>{t("boarder")}</small>
+            </div>
+
+
+            {manager && (
+
+              <div className="member-actions">
+
+                <button onClick={() => setEditing(person)}>
+                  <Pencil size={16} />
+                </button>
+
+                <button onClick={() => setRemoving(person)}>
+                  <Trash2 size={16} />
+                </button>
+
+              </div>
+
+            )}
+
+          </article>
+
+        ))}
+
+
+        {!boarders.length &&
+          <div className="tracker-empty">
+            No boarders yet.
+          </div>
+        }
+
+      </div>
+
+
+
+      {editing && (
+
+        <Modal
+          title={t("edit")}
+          close={() => setEditing(null)}
+        >
+
+          <input
+            value={editing.name}
+            onChange={(e) =>
+              setEditing({
+                ...editing,
+                name: e.target.value
+              })
+            }
+          />
+
+
+          <button
+            className="cta full"
+            onClick={async () => {
+
+              await updateDoc(
+                doc(
+                  db,
+                  "messes",
+                  messId,
+                  "people",
+                  editing.id
+                ),
+                {
+                  name: editing.name.trim(),
+                  updatedAt: serverTimestamp()
+                }
+              );
+
+              setEditing(null);
+
+            }}
+          >
+            {t("save")}
+          </button>
+
+        </Modal>
+
+      )}
+
+
+
+      {removing && (
+
+        <Modal
+          title={t("remove")}
+          close={() => setRemoving(null)}
+        >
+
+          <p>{t("removeWarning")}</p>
+
+
+          <button
+            className="danger full"
+            onClick={async () => {
+
+              await updateDoc(
+                doc(
+                  db,
+                  "messes",
+                  messId,
+                  "people",
+                  removing.id
+                ),
+                {
+                  active: false,
+                  removedAt: serverTimestamp()
+                }
+              );
+
+              setRemoving(null);
+
+            }}
+          >
+            {t("confirm")}
+          </button>
+
+
+        </Modal>
+
+      )}
+
+      {managerSuccess && (
+        <Modal
+          title={t("managerChanged")}
+          close={() => setManagerSuccess(false)}
+        >
+          <div className="success-modal-body">
+            <Check size={32} />
+            <p>{t("managerChanged")}</p>
+            <button className="cta full" onClick={() => setManagerSuccess(false)}>
+              {t("close")}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+    </section>
+  );
 }
 
 function GuestManagement({ t, messId, data, manager }) {
@@ -722,6 +1141,207 @@ function GuestManagement({ t, messId, data, manager }) {
 /* ------------------------------------------------------------------ */
 /* Bazar / Summary / Settings                                          */
 /* ------------------------------------------------------------------ */
+function NotesPanel({ t, messId, data, user, manager }) {
+
+  const existing = data.notes?.main;
+
+  const [text, setText] = useState("");
+  const [bold, setBold] = useState(false);
+  const [color, setColor] = useState("#173b3b");
+  const [saved, setSaved] = useState(false);
+
+
+
+  // Firestore data আসার পরে state update করবে
+  useEffect(() => {
+
+    if (existing) {
+
+      setText(existing.text || "");
+      setBold(existing.bold || false);
+      setColor(existing.color || "#173b3b");
+
+    }
+
+  }, [existing]);
+
+
+
+  const saveNotes = async () => {
+
+    await setDoc(
+      doc(
+        db,
+        "messes",
+        messId,
+        "notes",
+        "main"
+      ),
+      {
+        text,
+        bold,
+        color,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid
+      },
+      {
+        merge: true
+      }
+    );
+
+
+    // premium save feedback
+    setSaved(true);
+
+
+    setTimeout(() => {
+
+      setSaved(false);
+
+    }, 2500);
+
+  };
+
+
+
+  return (
+
+    <section className="panel notes-panel">
+
+
+      <div className="section-title">
+
+        <div>
+
+          <span>📝</span>
+
+          <h2>
+            Important Notes
+          </h2>
+
+          <p>
+            Keep important mess reminders here
+          </p>
+
+        </div>
+
+      </div>
+
+
+
+      {manager && (
+
+        <div className="notes-toolbar">
+
+
+          <button
+            className={bold ? "active" : ""}
+            onClick={() => setBold(!bold)}
+          >
+            <b>B</b>
+          </button>
+
+
+
+          <input
+
+            type="color"
+
+            value={color}
+
+            onChange={(e) =>
+              setColor(e.target.value)
+            }
+
+          />
+
+
+        </div>
+
+      )}
+
+
+
+
+
+      <textarea
+
+        className="notes-area"
+
+        disabled={!manager}
+
+        value={text}
+
+        onChange={(e) =>
+          setText(e.target.value)
+        }
+
+
+        style={{
+
+          fontWeight: bold ? 800 : 500,
+
+          color
+
+        }}
+
+
+        placeholder={
+
+          manager
+
+            ? "Write important notes..."
+
+            : "No notes added yet."
+
+        }
+
+
+      />
+
+
+
+
+      {manager && (
+
+        <>
+
+          <button
+
+            className="cta notes-save"
+
+            onClick={saveNotes}
+
+          >
+
+            Save Notes
+
+          </button>
+
+
+
+          {saved && (
+
+            <div className="notes-success">
+
+              ✓ Notes saved successfully
+
+            </div>
+
+          )}
+
+        </>
+
+      )}
+
+
+
+    </section>
+
+  );
+
+}
+
 function Expenses({ t, messId, data, manager }) {
   const [item, setItem] = useState(""), [amount, setAmount] = useState(""), [category, setCategory] = useState("other");
   const expenses = Object.values(data.expenses || {}), total = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
@@ -755,9 +1375,9 @@ function Summary({ t, data }) {
     <div className="guest-totals"><b>{t("guestMeals")}</b>{guestTypes.map((type) => <span key={type.key}>{type.emoji} {t(type.key)}: <strong>{typeTotals[type.key]}</strong></span>)}</div>
   </section>;
 }
-function SettingsPanel({ t, messId, data, manager }) {
-  const [name, setName] = useState(data.mess?.name || ""), [copied, setCopied] = useState(false);
-  if (!manager) return <section className="panel"><h2>{t("settings")}</h2><p>{t("managerOnly")}</p></section>;
+function SettingsPanel({ t, messId, data, user, manager, onLeave }) {
+  const [name, setName] = useState(data.mess?.name || ""), [copied, setCopied] = useState(false), [leaving, setLeaving] = useState(false), [leaveError, setLeaveError] = useState("");
+  const canLeave = !manager && data.mess?.createdBy !== user.uid && data.members?.[user.uid]?.role === "member";
   const regenerate = async () => {
     if (!confirm(t("confirmRegenerate"))) return;
     const old = data.mess?.inviteCode, next = inviteCode(), batch = writeBatch(db);
@@ -766,6 +1386,47 @@ function SettingsPanel({ t, messId, data, manager }) {
     if (old && (await getDoc(doc(db, "invites", old))).exists()) batch.delete(doc(db, "invites", old));
     await batch.commit();
   };
+  const leaveMess = async () => {
+    setLeaveError("");
+    try {
+      await runTransaction(db, async (tx) => {
+        const messRef = doc(db, "messes", messId);
+        const memberRef = doc(db, "messes", messId, "members", user.uid);
+        const profileRef = doc(db, "users", user.uid);
+        const [messSnap, memberSnap] = await Promise.all([tx.get(messRef), tx.get(memberRef)]);
+        if (!messSnap.exists() || !memberSnap.exists()) throw new Error("missing-membership");
+        if (memberSnap.data().role === "manager" || messSnap.data().currentManagerId === user.uid || messSnap.data().createdBy === user.uid) throw new Error("manager-cannot-leave");
+        tx.update(memberRef, { active: false, leftAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        tx.set(profileRef, { activeMessId: null, currentMessId: null, role: null, updatedAt: serverTimestamp() }, { merge: true });
+      });
+      onLeave();
+    } catch (error) {
+      console.error("leaveMess", error);
+      setLeaveError(error.message === "manager-cannot-leave" ? t("managerCannotLeave") : t("error"));
+    }
+  };
+  if (!manager) return <section className="panel">
+    <div className="section-title"><div><span>⚙️</span><h2>{t("settings")}</h2><p>{t("memberViewOnly")}</p></div></div>
+    <div className="danger-zone-card">
+      <div><span className="danger-dot">●</span><div><h3>{t("dangerZone")}</h3><p>{t("leaveMessHint")}</p></div></div>
+      <button className="danger" disabled={!canLeave} onClick={() => setLeaving(true)}><LogOut size={16} />{t("leaveMess")}</button>
+    </div>
+    {!canLeave && <p className="manager-guard-note">{t("managerCannotLeave")}</p>}
+    {leaving && <Modal title={t("leaveMess")} close={() => setLeaving(false)}>
+      <p>{t("leaveConfirm")}</p>
+      <ul className="leave-impact-list">
+        <li>{t("mealTrackerAccess")}</li>
+        <li>{t("notesAccess")}</li>
+        <li>{t("expensesAccess")}</li>
+        <li>{t("messDataAccess")}</li>
+      </ul>
+      {leaveError && <p className="error">{leaveError}</p>}
+      <div className="modal-actions">
+        <button className="secondary" onClick={() => setLeaving(false)}>{t("cancel")}</button>
+        <button className="danger" onClick={leaveMess}>{t("leaveMess")}</button>
+      </div>
+    </Modal>}
+  </section>;
   return <section className="panel">
     <div className="section-title"><div><span>⚙️</span><h2>{t("settings")}</h2><p>{t("manager")}: {data.mess?.managerName}</p></div></div>
     <label>{t("messName")}</label>
@@ -778,10 +1439,16 @@ function SettingsPanel({ t, messId, data, manager }) {
 /* ------------------------------------------------------------------ */
 /* Dashboard shell                                                     */
 /* ------------------------------------------------------------------ */
-function Dashboard({ t, lang, setLang, user, messId, data, logout }) {
-  const [tab, setTab] = useState("meals"), manager = data.month?.managerId === user.uid;
-  const tabs = [["meals", Utensils, t("meals")], ["members", Users, t("members")], ["bazar", ShoppingBasket, t("bazar")], ["reports", Sparkles, t("reports")], ["settings", Settings, t("settings")]];
-  return <main className="tracker">
+function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) {
+  const [tab, setTab] = useState("meals"), manager = data.members?.[user.uid]?.role === "manager";
+  const tabs = [
+    ["meals", Utensils, t("meals")],
+    ["members", Users, t("members")],
+    ["bazar", ShoppingBasket, t("bazar")],
+    ["reports", Sparkles, t("reports")],
+    ["notes", Pencil, t("notes")],
+    ["settings", Settings, t("settings")]
+  ]; return <main className="tracker">
     <header>
       <div className="dashboard-brand">
         <BrandMark className="dashboard-logo" />
@@ -812,7 +1479,15 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout }) {
     {tab === "members" && <div className="members-page"><Members t={t} messId={messId} data={data} manager={manager} /><GuestManagement t={t} messId={messId} data={data} manager={manager} /></div>}
     {tab === "bazar" && <Expenses t={t} messId={messId} data={data} manager={manager} />}
     {tab === "reports" && <Summary t={t} data={data} />}
-    {tab === "settings" && <SettingsPanel t={t} messId={messId} data={data} manager={manager} />}
+    {tab === "notes" &&
+      <NotesPanel
+        t={t}
+        messId={messId}
+        data={data}
+        user={user}
+        manager={manager}
+      />}
+    {tab === "settings" && <SettingsPanel t={t} messId={messId} data={data} user={user} manager={manager} onLeave={() => { setTab("meals"); leaveDone(); }} />}
   </main>;
 }
 
@@ -832,13 +1507,61 @@ export default function App() {
         if (!current) { if (alive) { setUser(null); setReady(true); } return; }
         try {
           const profile = doc(db, "users", current.uid), snap = await getDoc(profile);
-          let currentMessId = snap.data()?.currentMessId;
+          let currentMessId =
+            snap.data()?.activeMessId ||
+            snap.data()?.currentMessId ||
+            null;
+
+
+          // extra safety: find active membership if profile lost
           if (!currentMessId) {
+
+            const memberships = await getDocs(
+              collectionGroup(db, "members")
+            );
+
+            const found = memberships.docs.find(
+              (doc) =>
+                doc.id === current.uid &&
+                doc.data().active !== false
+            );
+
+            if (found) {
+              currentMessId = found.ref.parent.parent.id;
+            }
+
+          } if (!currentMessId) {
             const legacy = await getDocs(query(collectionGroup(db, "members"), where(documentId(), "==", current.uid), limit(1)));
-            if (!legacy.empty) currentMessId = legacy.docs[0].ref.parent.parent.id;
+            const activeLegacy = legacy.docs.find((membership) => membership.data().active !== false);
+            if (activeLegacy) currentMessId = activeLegacy.ref.parent.parent.id;
           }
-          await setDoc(profile, { uid: current.uid, displayName: current.displayName, email: current.email, photoURL: current.photoURL, currentMessId: currentMessId || null, updatedAt: serverTimestamp(), createdAt: snap.exists() ? snap.data().createdAt : serverTimestamp() }, { merge: true });
-          if (alive) { setUser(current); if (currentMessId) { setMessId(currentMessId); setScreen("tracker"); } else setScreen("auth"); }
+          if (currentMessId) {
+            const membership = await getDoc(doc(db, "messes", currentMessId, "members", current.uid));
+            if (!membership.exists() || membership.data().active === false) currentMessId = null;
+          }
+          await setDoc(
+            profile,
+            {
+              uid: current.uid,
+              displayName: current.displayName || "",
+              email: current.email || "",
+              photoURL: current.photoURL || "",
+
+              activeMessId: currentMessId || null,
+              currentMessId: currentMessId || null,
+
+              updatedAt: serverTimestamp(),
+
+              ...(snap.exists() && snap.data().createdAt
+                ? {}
+                : {
+                  createdAt: serverTimestamp()
+                })
+            },
+            {
+              merge: true
+            }
+          ); if (alive) { setUser(current); if (currentMessId) { setMessId(currentMessId); setScreen("tracker"); } else setScreen("auth"); }
         } catch (error) { console.error("restoreSession", error); if (alive) { setUser(current); setScreen("auth"); } }
         finally { if (alive) setReady(true); }
       };
@@ -853,7 +1576,7 @@ export default function App() {
   if (!firebaseReady) return <><Language lang={lang} setLang={setLang} /><Screen><div className="auth-card"><h2>{t("noConfig")}</h2><p>{t("noConfigDetail")}</p></div></Screen></>;
   if (!ready || (messId && data.loading)) return <Screen><div className="auth-card"><div className="pot">🍲</div><p>{t("loading")}</p></div></Screen>;
   if (messId && screen === "setup") return <Setup t={t} messId={messId} data={data} user={user} back={() => setScreen("choose")} done={() => setScreen("tracker")} />;
-  if (messId && screen === "tracker") return <Dashboard t={t} lang={lang} setLang={setLang} user={user} messId={messId} data={data} logout={logout} />;
+  if (messId && screen === "tracker") return <Dashboard t={t} lang={lang} setLang={setLang} user={user} messId={messId} data={data} logout={logout} leaveDone={() => { setMessId(null); setScreen("choose"); }} />;
   if (screen === "landing") return <Landing t={t} lang={lang} setLang={setLang} go={() => setScreen("auth")} />;
   if (screen === "auth") return <Auth t={t} user={user} login={login} logout={logout} choose={() => setScreen("choose")} />;
   if (screen === "choose") return <Choose t={t} setScreen={setScreen} />;
