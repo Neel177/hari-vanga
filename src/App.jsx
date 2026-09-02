@@ -1527,7 +1527,22 @@ function SettingsPanel({ t, messId, data, user, manager, onLeave }) {
 /* Dashboard shell                                                     */
 /* ------------------------------------------------------------------ */
 function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) {
-  const [tab, setTab] = useState("meals"), manager = data.members?.[user.uid]?.role === "manager";
+  const [tab, setTab] = useState("meals");
+  const [swipeX, setSwipeX] = useState(0);
+  const [swiping, setSwiping] = useState(false);
+
+  const manager = data.members?.[user.uid]?.role === "manager";
+
+  const swipeStartRef = useRef({
+    x: 0,
+    y: 0,
+    active: false,
+    horizontal: false
+  });
+
+  const tabBarRef = useRef(null);
+  const tabButtonRefs = useRef({});
+
   const tabs = [
     ["meals", Utensils, t("meals")],
     ["members", Users, t("members")],
@@ -1535,47 +1550,350 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
     ["reports", Sparkles, t("reports")],
     ["notes", Pencil, t("notes")],
     ["settings", Settings, t("settings")]
-  ]; return <main className="tracker">
-    <header>
-      <div className="dashboard-brand">
-        <BrandMark className="dashboard-logo" />
+  ];
 
-        <div>
-          <b>{data.mess?.name}</b>
-          <small>
-            {t("code")}: {data.mess?.inviteCode}
-          </small>
-        </div>
-      </div>
+  const currentTabIndex = tabs.findIndex(([key]) => key === tab);
 
-      <nav>
-        <Language
-          lang={lang}
-          setLang={setLang}
-          light
+  const goToTab = (nextTab) => {
+    setSwipeX(0);
+    setSwiping(false);
+    setTab(nextTab);
+  };
+
+  const goToAdjacentTab = (direction) => {
+    const nextIndex = currentTabIndex + direction;
+
+    if (nextIndex < 0 || nextIndex >= tabs.length) {
+      setSwipeX(0);
+      setSwiping(false);
+      return;
+    }
+
+    const nextTab = tabs[nextIndex][0];
+
+    const exitDistance =
+      direction > 0
+        ? -Math.min(window.innerWidth * 0.24, 120)
+        : Math.min(window.innerWidth * 0.24, 120);
+
+    setSwiping(false);
+    setSwipeX(exitDistance);
+
+    window.setTimeout(() => {
+      setTab(nextTab);
+
+      const enterDistance =
+        direction > 0
+          ? Math.min(window.innerWidth * 0.11, 55)
+          : -Math.min(window.innerWidth * 0.11, 55);
+
+      setSwipeX(enterDistance);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setSwipeX(0);
+        });
+      });
+    }, 115);
+  };
+
+  const shouldIgnoreSwipe = (target) => {
+    if (!(target instanceof Element)) return false;
+
+    return Boolean(
+      target.closest(
+        [
+          ".tabs",
+          ".date-strip",
+          ".clean-table",
+          ".food-picker",
+          ".guest-stepper",
+          ".modal",
+          "button",
+          "input",
+          "textarea",
+          "select",
+          "a",
+          "[role='dialog']"
+        ].join(",")
+      )
+    );
+  };
+
+  const handleTouchStart = (event) => {
+    if (window.innerWidth > 900) return;
+
+    const touch = event.touches[0];
+    if (!touch) return;
+
+    if (shouldIgnoreSwipe(event.target)) {
+      swipeStartRef.current.active = false;
+      return;
+    }
+
+    swipeStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      active: true,
+      horizontal: false
+    };
+
+    setSwiping(true);
+  };
+
+  const handleTouchMove = (event) => {
+    const gesture = swipeStartRef.current;
+
+    if (!gesture.active || window.innerWidth > 900) return;
+
+    const touch = event.touches[0];
+    if (!touch) return;
+
+    const deltaX = touch.clientX - gesture.x;
+    const deltaY = touch.clientY - gesture.y;
+
+    if (!gesture.horizontal) {
+      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+
+      if (Math.abs(deltaY) >= Math.abs(deltaX)) {
+        gesture.active = false;
+        setSwipeX(0);
+        setSwiping(false);
+        return;
+      }
+
+      gesture.horizontal = true;
+    }
+
+    const atFirstTab = currentTabIndex === 0 && deltaX > 0;
+    const atLastTab =
+      currentTabIndex === tabs.length - 1 && deltaX < 0;
+
+    let resistance = 1;
+
+    if (atFirstTab || atLastTab) {
+      resistance = 0.22;
+    }
+
+    const limitedDelta = Math.max(
+      -135,
+      Math.min(135, deltaX * resistance)
+    );
+
+    setSwipeX(limitedDelta);
+  };
+
+  const handleTouchEnd = () => {
+    const gesture = swipeStartRef.current;
+
+    if (!gesture.active && !gesture.horizontal) {
+      swipeStartRef.current = {
+        x: 0,
+        y: 0,
+        active: false,
+        horizontal: false
+      };
+
+      setSwipeX(0);
+      setSwiping(false);
+      return;
+    }
+
+    const threshold = Math.min(window.innerWidth * 0.16, 72);
+
+    if (swipeX <= -threshold) {
+      goToAdjacentTab(1);
+    } else if (swipeX >= threshold) {
+      goToAdjacentTab(-1);
+    } else {
+      setSwipeX(0);
+      setSwiping(false);
+    }
+
+    swipeStartRef.current = {
+      x: 0,
+      y: 0,
+      active: false,
+      horizontal: false
+    };
+  };
+
+  useEffect(() => {
+    const activeButton = tabButtonRefs.current[tab];
+    const tabBar = tabBarRef.current;
+
+    if (!activeButton || !tabBar) return;
+
+    const targetLeft =
+      activeButton.offsetLeft -
+      (tabBar.clientWidth - activeButton.offsetWidth) / 2;
+
+    tabBar.scrollTo({
+      left: Math.max(0, targetLeft),
+      behavior: "smooth"
+    });
+  }, [tab]);
+
+  const renderCurrentTab = () => {
+    if (tab === "meals") {
+      return (
+        <CurrentMealTracker
+          t={t}
+          data={data}
+          messId={messId}
+          user={user}
         />
+      );
+    }
 
-        <button onClick={logout}>
-          <LogOut size={16} />
-          {t("logout")}
-        </button>
-      </nav>
-    </header>
-    <div className="tabs">{tabs.map(([key, Icon, label]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><Icon size={17} /><span>{label}</span></button>)}</div>
-    {tab === "meals" && <CurrentMealTracker t={t} data={data} messId={messId} user={user} />}
-    {tab === "members" && <div className="members-page"><Members t={t} messId={messId} data={data} manager={manager} /><GuestManagement t={t} messId={messId} data={data} manager={manager} /></div>}
-    {tab === "bazar" && <Expenses t={t} messId={messId} data={data} manager={manager} />}
-    {tab === "reports" && <Summary t={t} data={data} />}
-    {tab === "notes" &&
-      <NotesPanel
+    if (tab === "members") {
+      return (
+        <div className="members-page">
+          <Members
+            t={t}
+            messId={messId}
+            data={data}
+            manager={manager}
+          />
+
+          <GuestManagement
+            t={t}
+            messId={messId}
+            data={data}
+            manager={manager}
+          />
+        </div>
+      );
+    }
+
+    if (tab === "bazar") {
+      return (
+        <Expenses
+          t={t}
+          messId={messId}
+          data={data}
+          manager={manager}
+        />
+      );
+    }
+
+    if (tab === "reports") {
+      return <Summary t={t} data={data} />;
+    }
+
+    if (tab === "notes") {
+      return (
+        <NotesPanel
+          t={t}
+          messId={messId}
+          data={data}
+          user={user}
+          manager={manager}
+        />
+      );
+    }
+
+    return (
+      <SettingsPanel
         t={t}
         messId={messId}
         data={data}
         user={user}
         manager={manager}
-      />}
-    {tab === "settings" && <SettingsPanel t={t} messId={messId} data={data} user={user} manager={manager} onLeave={() => { setTab("meals"); leaveDone(); }} />}
-  </main>;
+        onLeave={() => {
+          setTab("meals");
+          leaveDone();
+        }}
+      />
+    );
+  };
+
+  return (
+    <main className="tracker">
+
+      <header>
+
+        <div className="dashboard-brand">
+          <BrandMark className="dashboard-logo" />
+
+          <div>
+            <b>{data.mess?.name}</b>
+
+            <small>
+              {t("code")}: {data.mess?.inviteCode}
+            </small>
+          </div>
+        </div>
+
+
+        <nav>
+
+          <Language
+            lang={lang}
+            setLang={setLang}
+            light
+          />
+
+          <button onClick={logout}>
+            <LogOut size={16} />
+            {t("logout")}
+          </button>
+
+        </nav>
+
+      </header>
+
+
+      <div
+        className="tabs"
+        ref={tabBarRef}
+      >
+
+        {tabs.map(([key, Icon, label]) => (
+
+          <button
+            key={key}
+            ref={(element) => {
+              tabButtonRefs.current[key] = element;
+            }}
+            className={tab === key ? "active" : ""}
+            onClick={() => goToTab(key)}
+          >
+
+            <Icon size={17} />
+
+            <span>{label}</span>
+
+          </button>
+
+        ))}
+
+      </div>
+
+
+      <div
+        className={`swipe-tab-stage ${swiping ? "is-dragging" : ""}`}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+      >
+
+        <div
+          className="swipe-tab-content"
+          style={{
+            transform: `translate3d(${swipeX}px, 0, 0)`
+          }}
+        >
+
+          {renderCurrentTab()}
+
+        </div>
+
+      </div>
+
+    </main>
+  );
 }
 
 /* ------------------------------------------------------------------ */

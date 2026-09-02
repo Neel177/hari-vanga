@@ -3346,3 +3346,111 @@ body {
     }
 
 }
+
+/* ================================================================ */
+/* PREMIUM MOBILE SWIPE TAB NAVIGATION                              */
+/* ================================================================ */
+
+.swipe-tab-stage {
+    width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+}
+
+.swipe-tab-content {
+    width: 100%;
+    min-width: 0;
+
+    transform: translate3d(0, 0, 0);
+
+    transition:
+        transform 240ms cubic-bezier(.22, .8, .24, 1),
+        opacity 180ms ease;
+
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+
+/* finger actively dragging = absolutely immediate response */
+.swipe-tab-stage.is-dragging .swipe-tab-content {
+    transition: none;
+}
+
+
+/* desktop remains normal */
+@media (min-width: 901px) {
+
+    .swipe-tab-stage {
+        overflow: visible;
+    }
+
+    .swipe-tab-content {
+        transform: none !important;
+        transition: none !important;
+        will-change: auto;
+    }
+
+}
+
+
+/* native-app feeling only on touch/mobile layout */
+@media (max-width: 900px) {
+
+    .swipe-tab-stage {
+        position: relative;
+        width: 100%;
+
+        /*
+          Vertical page scrolling remains native.
+          Horizontal movement is handled by our swipe gesture.
+        */
+        touch-action: pan-y pinch-zoom;
+
+        overscroll-behavior-x: contain;
+    }
+
+
+    .swipe-tab-content {
+        transform-origin: center center;
+    }
+
+
+    /*
+      These already have their own horizontal movement.
+      Never hijack those gestures.
+    */
+
+    .tabs,
+    .date-strip,
+    .clean-table {
+        touch-action: pan-x pan-y;
+        -webkit-overflow-scrolling: touch;
+    }
+
+
+    /*
+      Make tab auto-centering look extra smooth.
+    */
+
+    .tabs {
+        scroll-behavior: smooth;
+        overscroll-behavior-x: contain;
+    }
+
+}
+
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+
+    .swipe-tab-content {
+        transition: none !important;
+    }
+
+    .tabs {
+        scroll-behavior: auto !important;
+    }
+
+}
