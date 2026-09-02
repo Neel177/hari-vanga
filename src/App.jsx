@@ -1552,42 +1552,59 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
     width: 0
   });
 
-  const changeTab = (nextTab) => {
-    if (nextTab === tab) return;
-
-    const index = tabs.findIndex(([key]) => key === nextTab);
+  const animateToTab = (nextIndex) => {
     const currentIndex = tabs.findIndex(([key]) => key === tab);
 
-    if (index === -1 || currentIndex === -1) return;
+    if (nextIndex === currentIndex || nextIndex < 0 || nextIndex >= tabs.length) {
+      return;
+    }
 
-    const direction = index > currentIndex ? -1 : 1;
     const content = contentRef.current;
 
     if (!content) {
-      setTab(nextTab);
+      setTab(tabs[nextIndex][0]);
       return;
     }
+
+    /*
+      Swipe left  -> next tab
+      New page enters from RIGHT
+
+      Swipe right -> previous tab
+      New page enters from LEFT
+    */
+
+    const movingForward = nextIndex > currentIndex;
+
+    // Current page exits in the same direction as the swipe.
+    const exitX = movingForward ? "-100%" : "100%";
+
+    // New page starts from the opposite side.
+    const enterX = movingForward ? "100%" : "-100%";
 
     content.style.transition =
       "transform 150ms cubic-bezier(0.22, 1, 0.36, 1)";
 
     content.style.transform =
-      `translate3d(${direction * -100}%, 0, 0)`;
+      `translate3d(${exitX}, 0, 0)`;
 
     window.setTimeout(() => {
-      setTab(nextTab);
+      setTab(tabs[nextIndex][0]);
 
       requestAnimationFrame(() => {
         const el = contentRef.current;
+
         if (!el) return;
 
+        // Put the new page on the correct entering side.
         el.style.transition = "none";
         el.style.transform =
-          `translate3d(${direction * 100}%, 0, 0)`;
+          `translate3d(${enterX}, 0, 0)`;
 
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             const current = contentRef.current;
+
             if (!current) return;
 
             current.style.transition =
@@ -1645,6 +1662,7 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
     if (!g.locked) {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
 
+      // Let normal vertical scrolling win.
       if (Math.abs(dy) > Math.abs(dx) * 1.15) {
         g.active = false;
         return;
@@ -1661,7 +1679,7 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
 
     let offset = dx;
 
-    // At the first/last tab, give only a tiny natural resistance.
+    // Only the edges have a small amount of resistance.
     if (currentIndex === 0 && dx > 0) {
       offset = dx * 0.28;
     }
@@ -1690,20 +1708,22 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
     g.active = false;
 
     const dx = e.clientX - g.startX;
-    const elapsed = Math.max(performance.now() - g.startTime, 1);
+    const elapsed = Math.max(
+      performance.now() - g.startTime,
+      1
+    );
 
     const distance = Math.abs(dx);
     const velocity = distance / elapsed;
 
     const currentIndex = tabs.findIndex(([key]) => key === tab);
 
-    /*
-      Much easier swipe:
+    // Short, easy flick.
+    const distanceThreshold = Math.min(
+      g.width * 0.09,
+      72
+    );
 
-      - around 9% of screen width is enough
-      - OR a quick flick is enough
-    */
-    const distanceThreshold = Math.min(g.width * 0.09, 72);
     const velocityThreshold = 0.42;
 
     const isSwipe =
@@ -1713,9 +1733,19 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
     let nextIndex = currentIndex;
 
     if (isSwipe) {
-      if (dx < 0 && currentIndex < tabs.length - 1) {
+      // Finger moves LEFT -> NEXT tab
+      if (
+        dx < 0 &&
+        currentIndex < tabs.length - 1
+      ) {
         nextIndex = currentIndex + 1;
-      } else if (dx > 0 && currentIndex > 0) {
+      }
+
+      // Finger moves RIGHT -> PREVIOUS tab
+      else if (
+        dx > 0 &&
+        currentIndex > 0
+      ) {
         nextIndex = currentIndex - 1;
       }
     }
@@ -1723,14 +1753,31 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
     const content = contentRef.current;
 
     if (nextIndex !== currentIndex) {
-      const direction = nextIndex > currentIndex ? -1 : 1;
+      /*
+        IMPORTANT:
+
+        nextIndex > currentIndex
+          = swipe LEFT
+          = current page exits LEFT
+          = new page enters RIGHT
+
+        nextIndex < currentIndex
+          = swipe RIGHT
+          = current page exits RIGHT
+          = new page enters LEFT
+      */
+
+      const movingForward = nextIndex > currentIndex;
+
+      const exitX = movingForward ? "-100%" : "100%";
+      const enterX = movingForward ? "100%" : "-100%";
 
       if (content) {
         content.style.transition =
           "transform 150ms cubic-bezier(0.22, 1, 0.36, 1)";
 
         content.style.transform =
-          `translate3d(${direction * -100}%, 0, 0)`;
+          `translate3d(${exitX}, 0, 0)`;
       }
 
       window.setTimeout(() => {
@@ -1738,15 +1785,21 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
 
         requestAnimationFrame(() => {
           const el = contentRef.current;
+
           if (!el) return;
 
+          /*
+            Position new tab on the opposite side
+            without showing the reposition.
+          */
           el.style.transition = "none";
           el.style.transform =
-            `translate3d(${direction * 100}%, 0, 0)`;
+            `translate3d(${enterX}, 0, 0)`;
 
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               const current = contentRef.current;
+
               if (!current) return;
 
               current.style.transition =
@@ -1758,8 +1811,9 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
           });
         });
       }, 150);
+
     } else if (content) {
-      // Snap back if it wasn't a valid swipe.
+      // Didn't qualify as a swipe — smoothly return.
       content.style.transition =
         "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)";
 
