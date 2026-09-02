@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { collection, collectionGroup, doc, documentId, getDoc, getDocs, limit, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
@@ -98,6 +98,35 @@ const guestTotals = (personId, records) => {
   return totals;
 };
 const guestTotalSum = (totals) => Object.values(totals).reduce((a, b) => a + b, 0);
+const emptyGuestTotals = () => Object.fromEntries(guestTypes.map((type) => [type.key, 0]));
+const getTrackerStats = (records = {}) => {
+  const sequences = {};
+  const boarderTotals = {};
+  const guestTotalsByPerson = {};
+  const activeMeals = Object.values(records)
+    .filter((record) => record.memberId && record.status === "on")
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.session === "morning" ? -1 : 1));
+
+  activeMeals.forEach((record) => {
+    const personId = record.memberId;
+    boarderTotals[personId] = (boarderTotals[personId] || 0) + 1;
+    if (!sequences[personId]) sequences[personId] = {};
+    sequences[personId][`${record.date}_${record.session}`] = boarderTotals[personId];
+  });
+
+  Object.values(records)
+    .filter((record) => record.memberId && record.status === "guest")
+    .forEach((record) => {
+      const personId = record.memberId;
+      if (!guestTotalsByPerson[personId]) guestTotalsByPerson[personId] = emptyGuestTotals();
+      const quantities = guestQuantities(record);
+      guestTypes.forEach((type) => {
+        guestTotalsByPerson[personId][type.key] += quantities[type.key];
+      });
+    });
+
+  return { sequences, boarderTotals, guestTotalsByPerson };
+};
 
 
 function useIndiaClock() {
@@ -105,56 +134,16 @@ function useIndiaClock() {
 
   useEffect(() => {
     let active = true;
-    let offset = 0;
-
-    const syncIndiaTime = async () => {
-      try {
-        const response = await fetch(
-          "https://timeapi.io/api/time/current/zone?timeZone=Asia%2FKolkata"
-        );
-
-        if (!response.ok) throw new Error("India time unavailable");
-
-        const data = await response.json();
-
-        const remoteDate = new Date(
-          `${data.date}T${data.time}${data.milliSeconds !== undefined
-            ? `.${String(data.milliSeconds).padStart(3, "0")}`
-            : ""
-          }+05:30`
-        );
-
-        if (!Number.isNaN(remoteDate.getTime())) {
-          offset = remoteDate.getTime() - Date.now();
-
-          if (active) {
-            setNow(new Date(Date.now() + offset));
-          }
-        }
-      } catch (error) {
-        console.warn(
-          "India network time unavailable, using Asia/Kolkata fallback.",
-          error
-        );
-      }
-    };
-
-    // Page immediately render হবে। API-এর জন্য অপেক্ষা করবে না।
-    syncIndiaTime();
 
     const timer = setInterval(() => {
       if (active) {
-        setNow(new Date(Date.now() + offset));
+        setNow(new Date());
       }
     }, 1000);
-
-    // মাঝে মাঝে network time আবার sync করবে
-    const resyncTimer = setInterval(syncIndiaTime, 5 * 60 * 1000);
 
     return () => {
       active = false;
       clearInterval(timer);
-      clearInterval(resyncTimer);
     };
   }, []);
 
@@ -165,8 +154,10 @@ function BrandMark({ className = "" }) {
   return (
     <img
       className={`brand-mark ${className}`}
-      src="/hari-vanga-logo.png"
+      src="/hari-vanga-logo-app.png"
       alt="Hari Vanga"
+      loading="eager"
+      decoding="async"
     />
   );
 }
@@ -539,12 +530,57 @@ function useMess(messId) {
       observe(doc(db, root, "months", month), "month"),
       observe(collection(db, root, "months", month, "memberStatuses"), "statuses", true),
       observe(collection(db, root, "months", month, "mealRecords"), "records", true),
-      observe(collection(db, root, "months", month, "guestMeals"), "legacyGuestMeals", true),
-      observe(collection(db, root, "expenses"), "expenses", true),
-      observe(collection(db, root, "notes"), "notes", true),
     ];
     return () => { alive = false; stops.forEach((stop) => stop()); };
   }, [messId]);
+  return state;
+}
+
+function useLazyMessData(messId, tab) {
+  const [state, setState] = useState({});
+
+  useEffect(() => {
+    setState({});
+  }, [messId]);
+
+  useEffect(() => {
+    if (!messId) return undefined;
+
+    let alive = true;
+    const root = `messes/${messId}`, month = monthKey();
+    const stops = [];
+    const observe = (ref, key) => {
+      stops.push(onSnapshot(ref, (snap) => {
+        if (alive) {
+          setState((s) => ({
+            ...s,
+            [key]: Object.fromEntries(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]))
+          }));
+        }
+      }, (error) => {
+        console.error(`Firestore ${key}`, error);
+        if (alive) setState((s) => ({ ...s, error: error.message }));
+      }));
+    };
+
+    if (tab === "bazar" || tab === "reports") {
+      observe(collection(db, root, "expenses"), "expenses");
+    }
+
+    if (tab === "reports") {
+      observe(collection(db, root, "months", month, "guestMeals"), "legacyGuestMeals");
+    }
+
+    if (tab === "notes") {
+      observe(collection(db, root, "notes"), "notes");
+    }
+
+    return () => {
+      alive = false;
+      stops.forEach((stop) => stop());
+    };
+  }, [messId, tab]);
+
   return state;
 }
 
@@ -911,8 +947,8 @@ function BoarderMealControl({ record, sequence, editable, onChange, session }) {
 /* ------------------------------------------------------------------ */
 /* Desktop tracker — one row per person, dates as columns, total at end */
 /* ------------------------------------------------------------------ */
-function TrackerCell({ person, day, kind, records, editable, change }) {
-  const date = dateKey(day), morning = records?.[`${person.id}_${date}_morning`], night = records?.[`${person.id}_${date}_night`], sequence = kind === "boarder" ? badgeMap(person.id, records) : {};
+function TrackerCell({ person, day, kind, records, editable, change, stats }) {
+  const date = dateKey(day), morning = records?.[`${person.id}_${date}_morning`], night = records?.[`${person.id}_${date}_night`], sequence = kind === "boarder" ? stats.sequences[person.id] || {} : {};
   return <div className="clean-cell">
     {kind === "boarder"
       ? <><BoarderMealControl session="morning" record={morning} sequence={sequence[`${date}_morning`]} editable={editable} onChange={(patch) => change(person, day, "morning", patch)} /><BoarderMealControl session="night" record={night} sequence={sequence[`${date}_night`]} editable={editable} onChange={(patch) => change(person, day, "night", patch)} /></>
@@ -923,30 +959,30 @@ function TotalBadge({ kind, value, totals, t }) {
   if (kind === "guest") return <div className="total-plate guest"><b>{guestTotalSum(totals)}</b><small>{t("total")}</small><div className="plate-breakdown">{guestTypes.map((food) => <span key={food.key}>{food.emoji}{totals[food.key]}</span>)}</div></div>;
   return <div className="total-plate"><b>{value}</b><small>{t("total")}</small></div>;
 }
-function CleanDesktopSection({ title, kind, people, records, editable, change, t }) {
+const CleanDesktopSection = memo(function CleanDesktopSection({ title, kind, people, records, editable, change, t, stats }) {
   const dates = Array.from({ length: monthDays() }, (_, index) => index + 1);
   return <section className={`clean-section ${kind}`}>
     <div className="clean-section-heading"><h2>{title}</h2><span>{people.length}</span></div>
     {people.length ? <div className="clean-table">
       <div className="clean-header"><b>{t("members")}</b>{dates.map((day) => <b key={day}>{day}</b>)}<b className="total-head">{t("total")}</b></div>
       {people.map((person) => {
-        const total = kind === "boarder" ? boarderTotal(person.id, records) : null, totals = kind === "guest" ? guestTotals(person.id, records) : null;
+        const total = kind === "boarder" ? stats.boarderTotals[person.id] || 0 : null, totals = kind === "guest" ? stats.guestTotalsByPerson[person.id] || emptyGuestTotals() : null;
         return <div className="clean-row" key={person.id}>
           <div className="clean-name"><b>{person.name}</b></div>
-          {dates.map((day) => <TrackerCell key={day} person={person} day={day} kind={kind} records={records} editable={editable} change={change} />)}
+          {dates.map((day) => <TrackerCell key={day} person={person} day={day} kind={kind} records={records} editable={editable} change={change} stats={stats} />)}
           <div className="clean-total"><TotalBadge kind={kind} value={total} totals={totals} t={t} /></div>
         </div>;
       })}
     </div> : <div className="tracker-empty">{kind === "guest" ? "No guests added for this month yet." : "No boarders yet."}</div>}
   </section>;
-}
+});
 
 /* ------------------------------------------------------------------ */
 /* Mobile tracker — date nav strip, one card per person for that day   */
 /* ------------------------------------------------------------------ */
-function MobilePeriod({ label, session, person, day, kind, records, editable, change }) {
+function MobilePeriod({ label, session, person, day, kind, records, editable, change, stats }) {
   const record = records?.[`${person.id}_${dateKey(day)}_${session}`];
-  const sequence = kind === "boarder" ? badgeMap(person.id, records)[`${dateKey(day)}_${session}`] : null;
+  const sequence = kind === "boarder" ? stats.sequences[person.id]?.[`${dateKey(day)}_${session}`] : null;
   return <div className={`mobile-period ${kind}`}>
     <div className="period-label"><span className={`period-icon ${session}`}>{session === "morning" ? "☀️" : "🌙"}</span><div><b>{label}</b><small>{kind === "guest" ? "Add one or many meals" : "Tap to toggle this meal"}</small></div></div>
     <div className="period-control">{kind === "boarder"
@@ -954,16 +990,16 @@ function MobilePeriod({ label, session, person, day, kind, records, editable, ch
       : <GuestMealControl record={record} editable={editable} onChange={(patch) => change(person, day, session, patch)} />}</div>
   </div>;
 }
-function MobileTrackerSection({ t, title, kind, people, records, editable, change, day }) {
+function MobileTrackerSection({ t, title, kind, people, records, editable, change, day, stats }) {
   return <section className={`mobile-tracker-section ${kind}`}>
     <div className="mobile-section-title"><h2>{title}</h2><span>{people.length}</span></div>
     {people.length ? people.map((person) => {
-      const total = kind === "boarder" ? boarderTotal(person.id, records) : null;
-      const totals = kind === "guest" ? guestTotals(person.id, records) : null;
+      const total = kind === "boarder" ? stats.boarderTotals[person.id] || 0 : null;
+      const totals = kind === "guest" ? stats.guestTotalsByPerson[person.id] || emptyGuestTotals() : null;
       return <article key={person.id}>
         <div className="mobile-person-heading"><div><span className="mobile-person-type">{kind === "guest" ? "Guest" : "Boarder"}</span><b>{person.name}</b></div><TotalBadge kind={kind} value={total} totals={totals} t={t} /></div>
-        <MobilePeriod label={t("morning")} session="morning" person={person} day={day} kind={kind} records={records} editable={editable} change={change} />
-        <MobilePeriod label={t("night")} session="night" person={person} day={day} kind={kind} records={records} editable={editable} change={change} />
+        <MobilePeriod label={t("morning")} session="morning" person={person} day={day} kind={kind} records={records} editable={editable} change={change} stats={stats} />
+        <MobilePeriod label={t("night")} session="night" person={person} day={day} kind={kind} records={records} editable={editable} change={change} stats={stats} />
       </article>;
     }) : <div className="tracker-empty">{kind === "guest" ? "No guests added yet. Add them from Members." : "No boarders yet."}</div>}
   </section>;
@@ -974,17 +1010,17 @@ function TrackerHero({
   data,
   boarders,
   guests,
-  records,
-  indiaNow,
+  stats,
 }) {
+  const indiaNow = useIndiaClock();
   const boarderMeals = boarders.reduce(
-    (sum, person) => sum + boarderTotal(person.id, records),
+    (sum, person) => sum + (stats.boarderTotals[person.id] || 0),
     0
   );
 
   const guestMeals = guests.reduce(
     (sum, person) =>
-      sum + guestTotalSum(guestTotals(person.id, records)),
+      sum + guestTotalSum(stats.guestTotalsByPerson[person.id] || emptyGuestTotals()),
     0
   );
 
@@ -1084,8 +1120,6 @@ function TrackerHero({
 }
 
 function CurrentMealTracker({ t, data, messId, user }) {
-  const indiaNow = useIndiaClock();
-
   const dateStripRef = useRef(null);
   const dateButtonRefs = useRef({});
 
@@ -1125,20 +1159,21 @@ function CurrentMealTracker({ t, data, messId, user }) {
   }, [day]);
 
   const manager = data.members?.[user.uid]?.role === "manager";
-  const people = Object.values(data.people || {}).filter((p) => p.active !== false);
-  const boarders = people.filter((p) => data.statuses?.[p.id]?.type !== "guest");
-  const guests = people.filter((p) => data.statuses?.[p.id]?.type === "guest");
-  const dates = Array.from({ length: monthDays() }, (_, i) => i + 1);
+  const people = useMemo(() => Object.values(data.people || {}).filter((p) => p.active !== false), [data.people]);
+  const boarders = useMemo(() => people.filter((p) => data.statuses?.[p.id]?.type !== "guest"), [people, data.statuses]);
+  const guests = useMemo(() => people.filter((p) => data.statuses?.[p.id]?.type === "guest"), [people, data.statuses]);
+  const dates = useMemo(() => Array.from({ length: monthDays() }, (_, i) => i + 1), []);
+  const stats = useMemo(() => getTrackerStats(data.records || {}), [data.records]);
 
-  const change = async (person, dayNum, session, patch) => {
+  const change = useCallback(async (person, dayNum, session, patch) => {
     const date = dateKey(dayNum);
     const ref = doc(db, "messes", messId, "months", monthKey(), "mealRecords", `${person.id}_${date}_${session}`);
     await setDoc(ref, { memberId: person.id, date, session, ...patch, updatedAt: serverTimestamp() }, { merge: true });
-  };
+  }, [messId]);
 
   return (
     <>
-      <TrackerHero t={t} data={data} boarders={boarders} guests={guests} records={data.records} indiaNow={indiaNow} />
+      <TrackerHero t={t} data={data} boarders={boarders} guests={guests} stats={stats} />
 
       <div className="legend">
         <span>{t("morning")}</span><i className="sun" />
@@ -1148,8 +1183,8 @@ function CurrentMealTracker({ t, data, messId, user }) {
 
       {/* Desktop: full monthly grid */}
       <div className="clean-desktop">
-        <CleanDesktopSection title={t("boarder")} kind="boarder" people={boarders} records={data.records} editable={manager} change={change} t={t} />
-        <CleanDesktopSection title={t("guest")} kind="guest" people={guests} records={data.records} editable={manager} change={change} t={t} />
+        <CleanDesktopSection title={t("boarder")} kind="boarder" people={boarders} records={data.records} editable={manager} change={change} t={t} stats={stats} />
+        <CleanDesktopSection title={t("guest")} kind="guest" people={guests} records={data.records} editable={manager} change={change} t={t} stats={stats} />
       </div>
 
       {/* Mobile: date strip + one card per person for the selected day */}
@@ -1176,8 +1211,8 @@ function CurrentMealTracker({ t, data, messId, user }) {
           </div>
         </div>
 
-        <MobileTrackerSection t={t} title={t("boarder")} kind="boarder" people={boarders} records={data.records} editable={manager} change={change} day={day} />
-        <MobileTrackerSection t={t} title={t("guest")} kind="guest" people={guests} records={data.records} editable={manager} change={change} day={day} />
+        <MobileTrackerSection t={t} title={t("boarder")} kind="boarder" people={boarders} records={data.records} editable={manager} change={change} day={day} stats={stats} />
+        <MobileTrackerSection t={t} title={t("guest")} kind="guest" people={guests} records={data.records} editable={manager} change={change} day={day} stats={stats} />
       </div>
     </>
   );
@@ -1832,7 +1867,9 @@ function SettingsPanel({ t, messId, data, user, manager, onLeave }) {
 /* ------------------------------------------------------------------ */
 function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) {
   const [tab, setTab] = useState("meals");
-  const manager = data.members?.[user.uid]?.role === "manager";
+  const lazyData = useLazyMessData(messId, tab);
+  const viewData = useMemo(() => ({ ...data, ...lazyData }), [data, lazyData]);
+  const manager = viewData.members?.[user.uid]?.role === "manager";
 
   const tabs = [
     ["meals", Utensils, t("meals")],
@@ -2153,7 +2190,7 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
       return (
         <CurrentMealTracker
           t={t}
-          data={data}
+          data={viewData}
           messId={messId}
           user={user}
         />
@@ -2166,14 +2203,14 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
           <Members
             t={t}
             messId={messId}
-            data={data}
+            data={viewData}
             manager={manager}
           />
 
           <GuestManagement
             t={t}
             messId={messId}
-            data={data}
+            data={viewData}
             manager={manager}
           />
         </div>
@@ -2185,7 +2222,7 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
         <Expenses
           t={t}
           messId={messId}
-          data={data}
+          data={viewData}
           manager={manager}
         />
       );
@@ -2195,7 +2232,7 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
       return (
         <Summary
           t={t}
-          data={data}
+          data={viewData}
         />
       );
     }
@@ -2205,7 +2242,7 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
         <NotesPanel
           t={t}
           messId={messId}
-          data={data}
+          data={viewData}
           user={user}
           manager={manager}
         />
@@ -2217,7 +2254,7 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
         <SettingsPanel
           t={t}
           messId={messId}
-          data={data}
+          data={viewData}
           user={user}
           manager={manager}
           onLeave={() => {
@@ -2239,10 +2276,10 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
           <BrandMark className="dashboard-logo" />
 
           <div>
-            <b>{data.mess?.name}</b>
+            <b>{viewData.mess?.name}</b>
 
             <small>
-              {t("code")}: {data.mess?.inviteCode}
+              {t("code")}: {viewData.mess?.inviteCode}
             </small>
           </div>
         </div>
@@ -2316,24 +2353,7 @@ export default function App() {
             null;
 
 
-          // extra safety: find active membership if profile lost
           if (!currentMessId) {
-
-            const memberships = await getDocs(
-              collectionGroup(db, "members")
-            );
-
-            const found = memberships.docs.find(
-              (doc) =>
-                doc.id === current.uid &&
-                doc.data().active !== false
-            );
-
-            if (found) {
-              currentMessId = found.ref.parent.parent.id;
-            }
-
-          } if (!currentMessId) {
             const legacy = await getDocs(query(collectionGroup(db, "members"), where(documentId(), "==", current.uid), limit(1)));
             const activeLegacy = legacy.docs.find((membership) => membership.data().active !== false);
             if (activeLegacy) currentMessId = activeLegacy.ref.parent.parent.id;
@@ -2342,7 +2362,7 @@ export default function App() {
             const membership = await getDoc(doc(db, "messes", currentMessId, "members", current.uid));
             if (!membership.exists() || membership.data().active === false) currentMessId = null;
           }
-          await setDoc(
+          setDoc(
             profile,
             {
               uid: current.uid,
@@ -2364,7 +2384,8 @@ export default function App() {
             {
               merge: true
             }
-          ); if (alive) { setUser(current); if (currentMessId) { setMessId(currentMessId); setScreen("tracker"); } else setScreen("auth"); }
+          ).catch((error) => console.error("profileRefresh", error));
+          if (alive) { setUser(current); if (currentMessId) { setMessId(currentMessId); setScreen("tracker"); } else setScreen("auth"); }
         } catch (error) { console.error("restoreSession", error); if (alive) { setUser(current); setScreen("auth"); } }
         finally { if (alive) setReady(true); }
       };
