@@ -568,12 +568,21 @@ function Setup({ t, messId, data, user, back, done }) {
 /* ------------------------------------------------------------------ */
 function GuestMealControl({ record, editable, onChange }) {
   const [open, setOpen] = useState(false);
+
   const quantities = guestQuantities(record);
   const total = guestTotalSum(quantities);
+
   const update = (foodKey, delta) => {
-    const next = { ...quantities, [foodKey]: Math.max(0, quantities[foodKey] + delta) };
+    const next = {
+      ...quantities,
+      [foodKey]: Math.max(0, quantities[foodKey] + delta)
+    };
+
     const nextTotal = guestTotalSum(next);
-    const firstActive = guestTypes.find((food) => next[food.key] > 0);
+    const firstActive = guestTypes.find(
+      (food) => next[food.key] > 0
+    );
+
     onChange({
       status: nextTotal > 0 ? "guest" : "off",
       quantities: next,
@@ -581,23 +590,211 @@ function GuestMealControl({ record, editable, onChange }) {
       mealCode: firstActive?.code || null,
     });
   };
-  return <div className={`guest-control ${open ? "open" : ""}`}>
-    <button disabled={!editable} className={`meal guest-main ${total ? "guest-on" : "guest-off"}`} onClick={() => editable && setOpen((value) => !value)}>
-      {total ? <><span className="guest-main-icons">{guestTypes.filter((food) => quantities[food.key]).map((food) => food.emoji).join("")}</span><b>{total}</b></> : <><Plus size={18} /><span>Guest</span></>}
-    </button>
-    {open && <div className="food-picker guest-stepper" role="dialog" aria-label="Guest meal quantities">
-      <div className="picker-title">Guest meals <button className="picker-close" onClick={() => setOpen(false)}><X size={15} /></button></div>
-      {guestTypes.map((food) => <div className="food-step" key={food.key}>
-        <span className="food-label">{food.emoji}<b>{food.key}</b></span>
-        <div className="quantity-stepper">
-          <button disabled={!editable || !quantities[food.key]} onClick={() => update(food.key, -1)}>−</button>
-          <strong>{quantities[food.key]}</strong>
-          <button disabled={!editable} onClick={() => update(food.key, 1)}>+</button>
+
+  const closePicker = () => setOpen(false);
+
+  return (
+    <>
+      <div className={`guest-control ${open ? "open" : ""}`}>
+
+        <button
+          disabled={!editable}
+          className={`meal guest-main ${total ? "guest-on" : "guest-off"
+            }`}
+          onClick={() => editable && setOpen(true)}
+        >
+          {total ? (
+            <>
+              <span className="guest-main-icons">
+                {guestTypes
+                  .filter((food) => quantities[food.key])
+                  .map((food) => food.emoji)
+                  .join("")}
+              </span>
+
+              <b>{total}</b>
+            </>
+          ) : (
+            <>
+              <Plus size={18} />
+              <span>Guest</span>
+            </>
+          )}
+        </button>
+
+      </div>
+
+      {open && (
+        <div
+          className="mobile-guest-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Guest meal quantities"
+          onClick={closePicker}
+        >
+          <div
+            className="guest-stepper mobile-guest-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+
+            <div className="picker-title">
+              <div>
+                <span className="guest-modal-kicker">
+                  🍛 Guest meal
+                </span>
+
+                <strong>
+                  Add your meals
+                </strong>
+              </div>
+
+              <button
+                className="picker-close"
+                onClick={closePicker}
+                aria-label="Close"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="guest-modal-subtitle">
+              Choose the food type and quantity
+            </div>
+
+            <div className="guest-food-list">
+              {guestTypes.map((food) => (
+                <div
+                  className={`food-step ${quantities[food.key] > 0 ? "has-quantity" : ""
+                    }`}
+                  key={food.key}
+                >
+                  <div className="food-label">
+                    <span className="food-emoji">
+                      {food.emoji}
+                    </span>
+
+                    <div>
+                      <b>{food.key}</b>
+
+                      <small>
+                        {quantities[food.key] > 0
+                          ? `${quantities[food.key]} meal${quantities[food.key] > 1 ? "s" : ""
+                          }`
+                          : "Not added"}
+                      </small>
+                    </div>
+                  </div>
+
+                  <div className="quantity-stepper">
+                    <button
+                      type="button"
+                      onClick={() => update(food.key, -1)}
+                      disabled={!quantities[food.key]}
+                      aria-label={`Remove ${food.key}`}
+                    >
+                      −
+                    </button>
+
+                    <strong>
+                      {quantities[food.key]}
+                    </strong>
+
+                    <button
+                      type="button"
+                      onClick={() => update(food.key, 1)}
+                      aria-label={`Add ${food.key}`}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="guest-modal-total">
+              <div>
+                <span>Total guest meals</span>
+                <strong>{total}</strong>
+              </div>
+
+              <span className="guest-total-icons">
+                {guestTypes
+                  .filter((food) => quantities[food.key])
+                  .map((food) => food.emoji)
+                  .join(" ")}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              className="done-choice"
+              onClick={closePicker}
+            >
+              Done
+              <Check size={17} />
+            </button>
+
+          </div>
         </div>
-      </div>)}
-      <button className="done-choice" onClick={() => setOpen(false)}>Done</button>
-    </div>}
-  </div>;
+      )}
+
+      {/* Desktop picker — same functionality as before */}
+      {open && (
+        <div className="desktop-guest-picker">
+          <div className="food-picker guest-stepper">
+            <div className="picker-title">
+              Guest meals
+
+              <button
+                className="picker-close"
+                onClick={closePicker}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {guestTypes.map((food) => (
+              <div className="food-step" key={food.key}>
+                <span className="food-label">
+                  {food.emoji}
+                  <b>{food.key}</b>
+                </span>
+
+                <div className="quantity-stepper">
+                  <button
+                    type="button"
+                    onClick={() => update(food.key, -1)}
+                    disabled={!quantities[food.key]}
+                  >
+                    −
+                  </button>
+
+                  <strong>
+                    {quantities[food.key]}
+                  </strong>
+
+                  <button
+                    type="button"
+                    onClick={() => update(food.key, 1)}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              className="done-choice"
+              onClick={closePicker}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 function BoarderMealControl({ record, sequence, editable, onChange, session }) {
   const on = record?.status === "on", Icon = session === "morning" ? Sun : Moon;
