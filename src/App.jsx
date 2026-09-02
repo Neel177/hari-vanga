@@ -1528,20 +1528,8 @@ function SettingsPanel({ t, messId, data, user, manager, onLeave }) {
 /* ------------------------------------------------------------------ */
 function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) {
   const [tab, setTab] = useState("meals");
-  const [swipeX, setSwipeX] = useState(0);
-  const [swiping, setSwiping] = useState(false);
 
   const manager = data.members?.[user.uid]?.role === "manager";
-
-  const swipeStartRef = useRef({
-    x: 0,
-    y: 0,
-    active: false,
-    horizontal: false
-  });
-
-  const tabBarRef = useRef(null);
-  const tabButtonRefs = useRef({});
 
   const tabs = [
     ["meals", Utensils, t("meals")],
@@ -1552,53 +1540,165 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
     ["settings", Settings, t("settings")]
   ];
 
-  const currentTabIndex = tabs.findIndex(([key]) => key === tab);
+  const stageRef = useRef(null);
+  const contentRef = useRef(null);
 
-  const goToTab = (nextTab) => {
-    setSwipeX(0);
-    setSwiping(false);
-    setTab(nextTab);
+  const gestureRef = useRef({
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    deltaX: 0,
+    tracking: false,
+    horizontal: false,
+    locked: false
+  });
+
+  const tabRef = useRef(tab);
+  const animatingRef = useRef(false);
+
+  useEffect(() => {
+    tabRef.current = tab;
+  }, [tab]);
+
+
+  const currentIndex = () =>
+    tabs.findIndex(([key]) => key === tabRef.current);
+
+
+  const resetContent = () => {
+    const content = contentRef.current;
+
+    if (!content) return;
+
+    content.style.transition = "none";
+    content.style.transform = "translate3d(0,0,0)";
+    content.style.willChange = "auto";
   };
 
-  const goToAdjacentTab = (direction) => {
-    const nextIndex = currentTabIndex + direction;
+
+  const goToTab = (nextTab) => {
+    if (animatingRef.current) return;
+
+    tabRef.current = nextTab;
+    setTab(nextTab);
+    resetContent();
+  };
+
+
+  const animateToTab = (direction) => {
+    if (animatingRef.current) return;
+
+    const index = currentIndex();
+    const nextIndex = index + direction;
 
     if (nextIndex < 0 || nextIndex >= tabs.length) {
-      setSwipeX(0);
-      setSwiping(false);
+      const content = contentRef.current;
+
+      if (content) {
+        content.style.willChange = "transform";
+        content.style.transition =
+          "transform 180ms cubic-bezier(.22,.8,.24,1)";
+        content.style.transform =
+          "translate3d(0,0,0)";
+
+        window.setTimeout(() => {
+          resetContent();
+        }, 190);
+      }
+
       return;
     }
 
+
     const nextTab = tabs[nextIndex][0];
+    const content = contentRef.current;
 
-    const exitDistance =
-      direction > 0
-        ? -Math.min(window.innerWidth * 0.24, 120)
-        : Math.min(window.innerWidth * 0.24, 120);
+    if (!content) {
+      goToTab(nextTab);
+      return;
+    }
 
-    setSwiping(false);
-    setSwipeX(exitDistance);
+
+    animatingRef.current = true;
+
+    const exitX =
+      direction === 1
+        ? -window.innerWidth * 0.9
+        : window.innerWidth * 0.9;
+
+
+    content.style.willChange = "transform";
+
+    content.style.transition =
+      "transform 190ms cubic-bezier(.32,.72,0,1)";
+
+    content.style.transform =
+      `translate3d(${exitX}px,0,0)`;
+
 
     window.setTimeout(() => {
+
+      tabRef.current = nextTab;
       setTab(nextTab);
 
-      const enterDistance =
-        direction > 0
-          ? Math.min(window.innerWidth * 0.11, 55)
-          : -Math.min(window.innerWidth * 0.11, 55);
-
-      setSwipeX(enterDistance);
 
       requestAnimationFrame(() => {
+
+        const freshContent = contentRef.current;
+
+        if (!freshContent) {
+          animatingRef.current = false;
+          return;
+        }
+
+
+        const enterX =
+          direction === 1
+            ? window.innerWidth * 0.12
+            : -window.innerWidth * 0.12;
+
+
+        freshContent.style.transition = "none";
+
+        freshContent.style.transform =
+          `translate3d(${enterX}px,0,0)`;
+
+
         requestAnimationFrame(() => {
-          setSwipeX(0);
+
+          freshContent.style.transition =
+            "transform 280ms cubic-bezier(.22,.8,.24,1)";
+
+          freshContent.style.transform =
+            "translate3d(0,0,0)";
+
+
+          window.setTimeout(() => {
+
+            freshContent.style.willChange = "auto";
+
+            animatingRef.current = false;
+
+          }, 290);
+
         });
+
       });
-    }, 115);
+
+    }, 195);
   };
 
-  const shouldIgnoreSwipe = (target) => {
-    if (!(target instanceof Element)) return false;
+
+  const shouldIgnoreGesture = (target) => {
+
+    if (!(target instanceof Element)) {
+      return false;
+    }
+
+    /*
+      These elements already have their own interaction.
+      Swiping them must never switch the main tab.
+    */
 
     return Boolean(
       target.closest(
@@ -1609,133 +1709,238 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
           ".food-picker",
           ".guest-stepper",
           ".modal",
-          "button",
+          "[role='dialog']",
           "input",
           "textarea",
           "select",
-          "a",
-          "[role='dialog']"
+          "button",
+          "a"
         ].join(",")
       )
     );
   };
 
-  const handleTouchStart = (event) => {
+
+  const handlePointerDown = (event) => {
+
     if (window.innerWidth > 900) return;
 
-    const touch = event.touches[0];
-    if (!touch) return;
+    if (animatingRef.current) return;
 
-    if (shouldIgnoreSwipe(event.target)) {
-      swipeStartRef.current.active = false;
+    if (event.pointerType === "mouse") return;
+
+    if (shouldIgnoreGesture(event.target)) {
+      gestureRef.current.tracking = false;
       return;
     }
 
-    swipeStartRef.current = {
-      x: touch.clientX,
-      y: touch.clientY,
-      active: true,
-      horizontal: false
-    };
 
-    setSwiping(true);
+    gestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      deltaX: 0,
+      tracking: true,
+      horizontal: false,
+      locked: false
+    };
   };
 
-  const handleTouchMove = (event) => {
-    const gesture = swipeStartRef.current;
 
-    if (!gesture.active || window.innerWidth > 900) return;
+  const handlePointerMove = (event) => {
 
-    const touch = event.touches[0];
-    if (!touch) return;
+    const gesture = gestureRef.current;
 
-    const deltaX = touch.clientX - gesture.x;
-    const deltaY = touch.clientY - gesture.y;
+    if (!gesture.tracking) return;
+
+    if (gesture.pointerId !== event.pointerId) return;
+
+
+    const deltaX =
+      event.clientX - gesture.startX;
+
+    const deltaY =
+      event.clientY - gesture.startY;
+
+
+    /*
+      Don't interfere with normal vertical page scrolling.
+    */
 
     if (!gesture.horizontal) {
-      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
 
-      if (Math.abs(deltaY) >= Math.abs(deltaX)) {
-        gesture.active = false;
-        setSwipeX(0);
-        setSwiping(false);
+      const distance =
+        Math.sqrt(
+          deltaX * deltaX +
+          deltaY * deltaY
+        );
+
+
+      if (distance < 7) return;
+
+
+      if (Math.abs(deltaY) > Math.abs(deltaX)) {
+
+        gesture.tracking = false;
+
         return;
       }
 
+
       gesture.horizontal = true;
+      gesture.locked = true;
     }
 
-    const atFirstTab = currentTabIndex === 0 && deltaX > 0;
-    const atLastTab =
-      currentTabIndex === tabs.length - 1 && deltaX < 0;
 
-    let resistance = 1;
+    if (!gesture.horizontal) return;
 
-    if (atFirstTab || atLastTab) {
-      resistance = 0.22;
+
+    event.preventDefault();
+
+
+    let movement = deltaX;
+
+
+    const index = currentIndex();
+
+
+    /*
+      Small rubber-band effect at the edges.
+    */
+
+    if (
+      (index === 0 && movement > 0) ||
+      (index === tabs.length - 1 && movement < 0)
+    ) {
+      movement *= 0.2;
     }
 
-    const limitedDelta = Math.max(
-      -135,
-      Math.min(135, deltaX * resistance)
+
+    /*
+      Keep the movement bounded so extremely fast
+      finger movement doesn't cause visual jumps.
+    */
+
+    movement = Math.max(
+      -window.innerWidth * 0.95,
+      Math.min(
+        window.innerWidth * 0.95,
+        movement
+      )
     );
 
-    setSwipeX(limitedDelta);
+
+    gesture.deltaX = movement;
+
+
+    const content = contentRef.current;
+
+    if (!content) return;
+
+
+    /*
+      Direct DOM update.
+      NO React re-render during finger movement.
+    */
+
+    content.style.willChange = "transform";
+
+    content.style.transition = "none";
+
+    content.style.transform =
+      `translate3d(${movement}px,0,0)`;
   };
 
-  const handleTouchEnd = () => {
-    const gesture = swipeStartRef.current;
 
-    if (!gesture.active && !gesture.horizontal) {
-      swipeStartRef.current = {
-        x: 0,
-        y: 0,
-        active: false,
-        horizontal: false
-      };
+  const finishGesture = (event) => {
 
-      setSwipeX(0);
-      setSwiping(false);
+    const gesture = gestureRef.current;
+
+    if (!gesture.tracking) {
+      gestureRef.current.tracking = false;
       return;
     }
 
-    const threshold = Math.min(window.innerWidth * 0.16, 72);
 
-    if (swipeX <= -threshold) {
-      goToAdjacentTab(1);
-    } else if (swipeX >= threshold) {
-      goToAdjacentTab(-1);
-    } else {
-      setSwipeX(0);
-      setSwiping(false);
+    if (
+      event &&
+      gesture.pointerId !== event.pointerId
+    ) {
+      return;
     }
 
-    swipeStartRef.current = {
-      x: 0,
-      y: 0,
-      active: false,
-      horizontal: false
-    };
+
+    const deltaX = gesture.deltaX;
+
+    gesture.tracking = false;
+
+
+    if (!gesture.horizontal) {
+      gestureRef.current.horizontal = false;
+      gestureRef.current.locked = false;
+      return;
+    }
+
+
+    /*
+      Around 17% of the screen width is enough.
+      This feels much more natural on phones.
+    */
+
+    const threshold =
+      Math.min(
+        Math.max(window.innerWidth * 0.17, 55),
+        85
+      );
+
+
+    gestureRef.current.horizontal = false;
+    gestureRef.current.locked = false;
+
+
+    if (Math.abs(deltaX) >= threshold) {
+
+      animateToTab(
+        deltaX < 0 ? 1 : -1
+      );
+
+    } else {
+
+      const content = contentRef.current;
+
+      if (!content) return;
+
+
+      /*
+        Soft snap-back when the gesture wasn't
+        large enough to change tabs.
+      */
+
+      content.style.willChange = "transform";
+
+      content.style.transition =
+        "transform 230ms cubic-bezier(.22,.8,.24,1)";
+
+      content.style.transform =
+        "translate3d(0,0,0)";
+
+
+      window.setTimeout(() => {
+        if (!animatingRef.current) {
+          content.style.willChange = "auto";
+        }
+      }, 240);
+    }
+
+
+    gestureRef.current.deltaX = 0;
   };
 
-  useEffect(() => {
-    const activeButton = tabButtonRefs.current[tab];
-    const tabBar = tabBarRef.current;
-
-    if (!activeButton || !tabBar) return;
-
-    const targetLeft =
-      activeButton.offsetLeft -
-      (tabBar.clientWidth - activeButton.offsetWidth) / 2;
-
-    tabBar.scrollTo({
-      left: Math.max(0, targetLeft),
-      behavior: "smooth"
-    });
-  }, [tab]);
 
   const renderCurrentTab = () => {
+
     if (tab === "meals") {
+
       return (
         <CurrentMealTracker
           t={t}
@@ -1746,9 +1951,12 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
       );
     }
 
+
     if (tab === "members") {
+
       return (
         <div className="members-page">
+
           <Members
             t={t}
             messId={messId}
@@ -1762,11 +1970,14 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
             data={data}
             manager={manager}
           />
+
         </div>
       );
     }
 
+
     if (tab === "bazar") {
+
       return (
         <Expenses
           t={t}
@@ -1777,11 +1988,20 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
       );
     }
 
+
     if (tab === "reports") {
-      return <Summary t={t} data={data} />;
+
+      return (
+        <Summary
+          t={t}
+          data={data}
+        />
+      );
     }
 
+
     if (tab === "notes") {
+
       return (
         <NotesPanel
           t={t}
@@ -1792,6 +2012,7 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
         />
       );
     }
+
 
     return (
       <SettingsPanel
@@ -1808,21 +2029,26 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
     );
   };
 
+
   return (
     <main className="tracker">
 
       <header>
 
         <div className="dashboard-brand">
+
           <BrandMark className="dashboard-logo" />
 
           <div>
+
             <b>{data.mess?.name}</b>
 
             <small>
               {t("code")}: {data.mess?.inviteCode}
             </small>
+
           </div>
+
         </div>
 
 
@@ -1835,8 +2061,11 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
           />
 
           <button onClick={logout}>
+
             <LogOut size={16} />
+
             {t("logout")}
+
           </button>
 
         </nav>
@@ -1844,46 +2073,65 @@ function Dashboard({ t, lang, setLang, user, messId, data, logout, leaveDone }) 
       </header>
 
 
-      <div
-        className="tabs"
-        ref={tabBarRef}
-      >
+      <div className="tabs">
 
-        {tabs.map(([key, Icon, label]) => (
+        {tabs.map(
+          ([key, Icon, label]) => (
 
-          <button
-            key={key}
-            ref={(element) => {
-              tabButtonRefs.current[key] = element;
-            }}
-            className={tab === key ? "active" : ""}
-            onClick={() => goToTab(key)}
-          >
+            <button
+              key={key}
+              className={
+                tab === key
+                  ? "active"
+                  : ""
+              }
+              onClick={() =>
+                goToTab(key)
+              }
+            >
 
-            <Icon size={17} />
+              <Icon size={17} />
 
-            <span>{label}</span>
+              <span>
+                {label}
+              </span>
 
-          </button>
+            </button>
 
-        ))}
+          )
+        )}
 
       </div>
 
 
       <div
-        className={`swipe-tab-stage ${swiping ? "is-dragging" : ""}`}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
+        ref={stageRef}
+        className="swipe-tab-stage"
+
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishGesture}
+        onPointerCancel={finishGesture}
+        onPointerLeave={(event) => {
+
+          /*
+            Don't cancel an active touch gesture
+            just because the finger temporarily
+            leaves a child/card.
+          */
+
+          if (
+            gestureRef.current.horizontal &&
+            event.pointerType !== "mouse"
+          ) {
+            return;
+          }
+        }}
       >
 
         <div
+          ref={contentRef}
           className="swipe-tab-content"
-          style={{
-            transform: `translate3d(${swipeX}px, 0, 0)`
-          }}
         >
 
           {renderCurrentTab()}
