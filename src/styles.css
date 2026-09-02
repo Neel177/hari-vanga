@@ -3351,7 +3351,6 @@ body {
 /* ================================================================
    PREMIUM MOBILE APP-LIKE TAB SWIPE
    ================================================================ */
-
 .swipe-tab-stage {
     width: 100%;
     min-width: 0;
@@ -3359,92 +3358,40 @@ body {
     position: relative;
 }
 
-
 .swipe-tab-content {
     width: 100%;
     min-width: 0;
-
     transform: translate3d(0, 0, 0);
-
-    will-change: auto;
-
+    will-change: transform;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
-
-    transform-origin: center center;
 }
-
-
-/* ------------------------------------------------
-   Mobile gesture layer
-   ------------------------------------------------ */
 
 @media (max-width: 900px) {
 
     .swipe-tab-stage {
-
-        /*
-          Vertical scrolling remains completely native.
-          Horizontal movement belongs to our gesture.
-        */
-
         touch-action: pan-y pinch-zoom;
-
         overscroll-behavior-x: contain;
-
-        /*
-          Make the entire content region swipeable,
-          not only cards.
-        */
-
         -webkit-tap-highlight-color: transparent;
     }
 
-
     .swipe-tab-content {
-
-        /*
-          Avoid browser compositing surprises.
-        */
-
         contain: layout paint style;
-
-        transform: translate3d(0, 0, 0);
     }
-
-
-    /*
-      Existing horizontal areas keep their own gestures.
-    */
-
-    .tabs,
-    .date-strip,
-    .clean-table {
-
-        touch-action: pan-x pan-y;
-
-        -webkit-overflow-scrolling: touch;
-
-        overscroll-behavior-x: contain;
-    }
-
-
-    /*
-      The main tab bar itself should never trigger
-      the page swipe navigation.
-    */
 
     .tabs {
         position: relative;
-        z-index: 10;
+        z-index: 20;
+        touch-action: pan-x pan-y;
     }
 
+    .date-strip,
+    .clean-table {
+        touch-action: pan-x pan-y;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+    }
 }
-
-
-/* ------------------------------------------------
-   Desktop = completely unchanged
-   ------------------------------------------------ */
 
 @media (min-width: 901px) {
 
@@ -3456,18 +3403,11 @@ body {
         transform: none !important;
         will-change: auto !important;
     }
-
 }
-
-
-/* ------------------------------------------------
-   Reduced motion accessibility
-   ------------------------------------------------ */
 
 @media (prefers-reduced-motion: reduce) {
 
     .swipe-tab-content {
         transition: none !important;
     }
-
 }
