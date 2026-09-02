@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { collection, collectionGroup, doc, documentId, getDoc, getDocs, limit, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { ArrowLeft, ArrowRight, Check, CircleUserRound, Copy, LogOut, Moon, Pencil, Plus, Settings, ShoppingBasket, Sparkles, Sun, Trash2, Users, Utensils, X } from "lucide-react";
@@ -579,6 +580,7 @@ function GuestMealControl({ record, editable, onChange }) {
     };
 
     const nextTotal = guestTotalSum(next);
+
     const firstActive = guestTypes.find(
       (food) => next[food.key] > 0
     );
@@ -591,40 +593,34 @@ function GuestMealControl({ record, editable, onChange }) {
     });
   };
 
-  const closePicker = () => setOpen(false);
+  const closePicker = () => {
+    setOpen(false);
+  };
 
-  return (
-    <>
-      <div className={`guest-control ${open ? "open" : ""}`}>
+  /*
+    Lock the background while the mobile guest picker
+    is open. The modal itself lives directly under body
+    through a React portal, so the swipe layer cannot
+    move or clip it.
+  */
+  useEffect(() => {
+    if (!open || window.innerWidth > 900) return undefined;
 
-        <button
-          disabled={!editable}
-          className={`meal guest-main ${total ? "guest-on" : "guest-off"
-            }`}
-          onClick={() => editable && setOpen(true)}
-        >
-          {total ? (
-            <>
-              <span className="guest-main-icons">
-                {guestTypes
-                  .filter((food) => quantities[food.key])
-                  .map((food) => food.emoji)
-                  .join("")}
-              </span>
+    const previousOverflow = document.body.style.overflow;
+    const previousTouchAction = document.body.style.touchAction;
 
-              <b>{total}</b>
-            </>
-          ) : (
-            <>
-              <Plus size={18} />
-              <span>Guest</span>
-            </>
-          )}
-        </button>
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
 
-      </div>
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.touchAction = previousTouchAction;
+    };
+  }, [open]);
 
-      {open && (
+  const mobilePicker =
+    open && typeof document !== "undefined"
+      ? createPortal(
         <div
           className="mobile-guest-overlay"
           role="dialog"
@@ -649,6 +645,7 @@ function GuestMealControl({ record, editable, onChange }) {
               </div>
 
               <button
+                type="button"
                 className="picker-close"
                 onClick={closePicker}
                 aria-label="Close"
@@ -664,31 +661,43 @@ function GuestMealControl({ record, editable, onChange }) {
             <div className="guest-food-list">
               {guestTypes.map((food) => (
                 <div
-                  className={`food-step ${quantities[food.key] > 0 ? "has-quantity" : ""
+                  className={`food-step ${quantities[food.key] > 0
+                      ? "has-quantity"
+                      : ""
                     }`}
                   key={food.key}
                 >
+
                   <div className="food-label">
+
                     <span className="food-emoji">
                       {food.emoji}
                     </span>
 
                     <div>
-                      <b>{food.key}</b>
+                      <b>
+                        {food.key}
+                      </b>
 
                       <small>
                         {quantities[food.key] > 0
-                          ? `${quantities[food.key]} meal${quantities[food.key] > 1 ? "s" : ""
+                          ? `${quantities[food.key]} meal${quantities[food.key] > 1
+                            ? "s"
+                            : ""
                           }`
                           : "Not added"}
                       </small>
                     </div>
+
                   </div>
 
                   <div className="quantity-stepper">
+
                     <button
                       type="button"
-                      onClick={() => update(food.key, -1)}
+                      onClick={() =>
+                        update(food.key, -1)
+                      }
                       disabled={!quantities[food.key]}
                       aria-label={`Remove ${food.key}`}
                     >
@@ -701,28 +710,44 @@ function GuestMealControl({ record, editable, onChange }) {
 
                     <button
                       type="button"
-                      onClick={() => update(food.key, 1)}
+                      onClick={() =>
+                        update(food.key, 1)
+                      }
                       aria-label={`Add ${food.key}`}
                     >
                       +
                     </button>
+
                   </div>
+
                 </div>
               ))}
             </div>
 
             <div className="guest-modal-total">
+
               <div>
-                <span>Total guest meals</span>
-                <strong>{total}</strong>
+                <span>
+                  Total guest meals
+                </span>
+
+                <strong>
+                  {total}
+                </strong>
               </div>
 
               <span className="guest-total-icons">
                 {guestTypes
-                  .filter((food) => quantities[food.key])
-                  .map((food) => food.emoji)
+                  .filter(
+                    (food) =>
+                      quantities[food.key]
+                  )
+                  .map(
+                    (food) => food.emoji
+                  )
                   .join(" ")}
               </span>
+
             </div>
 
             <button
@@ -735,17 +760,75 @@ function GuestMealControl({ record, editable, onChange }) {
             </button>
 
           </div>
-        </div>
-      )}
+        </div>,
+        document.body
+      )
+      : null;
 
-      {/* Desktop picker — same functionality as before */}
+  return (
+    <>
+      <div
+        className={`guest-control ${open ? "open" : ""
+          }`}
+      >
+
+        <button
+          disabled={!editable}
+          className={`meal guest-main ${total
+              ? "guest-on"
+              : "guest-off"
+            }`}
+          onClick={() =>
+            editable && setOpen(true)
+          }
+        >
+
+          {total ? (
+            <>
+              <span className="guest-main-icons">
+                {guestTypes
+                  .filter(
+                    (food) =>
+                      quantities[food.key]
+                  )
+                  .map(
+                    (food) =>
+                      food.emoji
+                  )
+                  .join("")}
+              </span>
+
+              <b>
+                {total}
+              </b>
+            </>
+          ) : (
+            <>
+              <Plus size={18} />
+              <span>
+                Guest
+              </span>
+            </>
+          )}
+
+        </button>
+
+      </div>
+
+      {/* -----------------------------------------------------------
+          Desktop picker
+          ----------------------------------------------------------- */}
+
       {open && (
         <div className="desktop-guest-picker">
+
           <div className="food-picker guest-stepper">
+
             <div className="picker-title">
               Guest meals
 
               <button
+                type="button"
                 className="picker-close"
                 onClick={closePicker}
               >
@@ -754,17 +837,28 @@ function GuestMealControl({ record, editable, onChange }) {
             </div>
 
             {guestTypes.map((food) => (
-              <div className="food-step" key={food.key}>
+              <div
+                className="food-step"
+                key={food.key}
+              >
+
                 <span className="food-label">
                   {food.emoji}
-                  <b>{food.key}</b>
+                  <b>
+                    {food.key}
+                  </b>
                 </span>
 
                 <div className="quantity-stepper">
+
                   <button
                     type="button"
-                    onClick={() => update(food.key, -1)}
-                    disabled={!quantities[food.key]}
+                    onClick={() =>
+                      update(food.key, -1)
+                    }
+                    disabled={
+                      !quantities[food.key]
+                    }
                   >
                     −
                   </button>
@@ -775,11 +869,15 @@ function GuestMealControl({ record, editable, onChange }) {
 
                   <button
                     type="button"
-                    onClick={() => update(food.key, 1)}
+                    onClick={() =>
+                      update(food.key, 1)
+                    }
                   >
                     +
                   </button>
+
                 </div>
+
               </div>
             ))}
 
@@ -790,9 +888,18 @@ function GuestMealControl({ record, editable, onChange }) {
             >
               Done
             </button>
+
           </div>
+
         </div>
       )}
+
+      {/* -----------------------------------------------------------
+          Mobile picker lives OUTSIDE swipe-tab-content
+          ----------------------------------------------------------- */}
+
+      {mobilePicker}
+
     </>
   );
 }
